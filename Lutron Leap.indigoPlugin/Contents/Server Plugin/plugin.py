@@ -515,8 +515,6 @@ class Plugin(indigo.PluginBase):
             returnList.append((linkID, linkItem["name"]))
         return sorted(returnList, key=lambda item: item[1])
 
-    ########################################
-
     def logLinkedDevices(self):
         if len(self.linkedDeviceList) == 0:
             self.logger.info("No linked Devices")
