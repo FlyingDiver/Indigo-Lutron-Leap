@@ -1,3 +1,56 @@
 <?xml version="1.0"?>
 <Events>
+	<Event id="buttonEvent">
+        <Name>Button Event</Name>
+ 		<ConfigUI>
+            <Field type="menu" id="event_type" defaultValue="Press">
+                <Label>Event:</Label>
+                <List>
+                    <Option value="Press">Button Press</Option>
+                    <Option value="Release">Button Release</Option>
+                </List>
+            </Field>
+            <Field id="bridge" type="menu">
+                <Label>Bridge:</Label>
+                <List class="self" method="get_found_bridges" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="device" type="menu">
+                <Label>Device:</Label>
+                <List class="self" filter="" method="room_list"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="buttonID" type="menu">
+                <Label>Button:</Label>
+                <List class="self" filter="" method="pickButton"  dynamicReload="true"/>
+            </Field>
+ 		</ConfigUI>
+	</Event>
+    <Event id="multiButtonPress">
+        <Name>Button Presses</Name>
+ 		<ConfigUI>
+            <Field type="menu" id="clicks" defaultValue="1">
+                <Label>Presses:</Label>
+                <List>
+                    <Option value="1">Single Press</Option>
+                    <Option value="2">Double Press</Option>
+                    <Option value="3">Triple Press</Option>
+                </List>
+            </Field>
+            <Field id="bridge" type="menu">
+                <Label>Bridge:</Label>
+                <List class="self" method="get_found_bridges" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="device" type="menu">
+                <Label>Device:</Label>
+                <List class="self" filter="" method="room_list"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="buttonID" type="menu">
+                <Label>Button:</Label>
+                <List class="self" filter="" method="pickButton"  dynamicReload="true"/>
+            </Field>
+ 		</ConfigUI>
+	</Event>
 </Events>

@@ -2,7 +2,14 @@
 <PluginConfig>
 	<SupportURL>https://github.com/FlyingDiver/Indigo-Lutron-Leap/issues</SupportURL>
 
-	<Field id="logLevel" type="menu" defaultValue="20">
+    <Field id="click_timeout" type="textField" defaultValue="0.5">
+        <Label>Click Timeout:</Label>
+    </Field>
+    <Field id="click_timeout_note" type="label" fontSize="small" fontColor="darkgray">
+        <Label>Timeout after keypress(s) for Single/Double/Triple type triggers.</Label>
+    </Field>
+    <Field id="simpleSeparator2" type="separator"/>
+	<Field id="logLevel" type="menu" defaultValue="10">
 		<Label>Event Logging Level:</Label>
 		<List>
 			<Option value="5">Detailed Debugging Messages</Option>

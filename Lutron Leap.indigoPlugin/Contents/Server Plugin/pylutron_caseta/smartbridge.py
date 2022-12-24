@@ -94,6 +94,7 @@ class Smartbridge:
 
         if self._leap is not None:
             self._leap.close()
+            self._leap.close()
             self._leap = None
 
         if not self._login_completed.done():

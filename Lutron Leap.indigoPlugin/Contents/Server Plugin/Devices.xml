@@ -1,43 +1,69 @@
 <?xml version="1.0"?>
 <Devices>
-    <Device id="leapHub" type="custom">
-        <Name>Lutron Hub</Name>
+    <Device id="leapBridge" type="custom">
+        <Name>Lutron Bridge</Name>
         <ConfigUI>
+            <Field id="paired" type="checkbox" defaultValue="false" hidden="true" />
             <Field id="address" type="menu">
-                <Label>Hub:</Label>
-                <List class="self" method="get_hub_list" dynamicReload="true"/>
+                <Label>Bridge:</Label>
+                <List class="self" method="get_found_bridges" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
-            <Field id="pair_hub_note" type="label">
-                <Label>Pressing "Save" here will initiate the pairing process with the hub. Press the pairing button on Hub.</Label>
+            <Field id="pair_bridge_note" type="label">
+                <Label>Pressing "Save" here will initiate the pairing process with the bridge. Press the pairing button on Bridge device.</Label>
             </Field>
         </ConfigUI>
         <States>
-            <State id="ProtocolVersion" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Protocol Version</TriggerLabel>
-                <ControlPageLabel>Protocol Version</ControlPageLabel>
-            </State>
             <State id="status" defaultValue="Unknown">
                 <ValueType>String</ValueType>
 	            <TriggerLabel>System State is</TriggerLabel>
 	            <ControlPageLabel>System State</ControlPageLabel>
+            </State>
+            <State id="protocol_version" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Protocol Version</TriggerLabel>
+                <ControlPageLabel>Protocol Version</ControlPageLabel>
+            </State>
+            <State id="name" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Name</TriggerLabel>
+                <ControlPageLabel>Name</ControlPageLabel>
+            </State>
+            <State id="model" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Model</TriggerLabel>
+                <ControlPageLabel>Model</ControlPageLabel>
+            </State>
+            <State id="serial" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Serial Number</TriggerLabel>
+                <ControlPageLabel>Serial Number</ControlPageLabel>
+            </State>
+            <State id="dev_type" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Device Type</TriggerLabel>
+                <ControlPageLabel>Device Type</ControlPageLabel>
             </State>
         </States>
         <UiDisplayStateId>status</UiDisplayStateId>
     </Device>
 
     <Device id="leapDimmer" type="dimmer">
-        <Name>Sensor</Name>
+        <Name>Dimmer</Name>
         <ConfigUI>
 			<Field id="SupportsOnState" type="checkbox" defaultValue="true" hidden="true" />
-             <Field id="hub" type="menu">
-                <Label>Hub:</Label>
-                <List class="self" method="get_hub_list" dynamicReload="true"/>
+            <Field id="address" type="textfield" hidden="true" />
+             <Field id="bridge" type="menu">
+                <Label>Bridge:</Label>
+                <List class="self" method="get_found_bridges" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
-            <Field id="address" type="menu">
-                <Label>Device:</Label>
+             <Field id="room" type="menu" defaultValue="" >
+                <Label>Room Location:</Label>
+                <List class="self" method="room_list_add" dynamicReload="true"/>
+           </Field>
+            <Field id="device" type="menu">
+                <Label>Bridge:</Label>
                 <List class="self" method="get_device_list" filter="dimmer" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
@@ -73,10 +99,10 @@
                 <TriggerLabel>serial</TriggerLabel>
                 <ControlPageLabel>serial</ControlPageLabel>
             </State>
-            <State id="type" defaultValue="">
+            <State id="dev_type" defaultValue="">
                 <ValueType>String</ValueType>
-                <TriggerLabel>type</TriggerLabel>
-                <ControlPageLabel>type</ControlPageLabel>
+                <TriggerLabel>Device Type</TriggerLabel>
+                <ControlPageLabel>Device Type</ControlPageLabel>
             </State>
             <State id="zone" defaultValue="">
                 <ValueType>String</ValueType>

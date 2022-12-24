@@ -1,5 +1,83 @@
 <?xml version="1.0"?>
 <MenuItems>
+    <MenuItem id="menu3">
+        <Name>Write Bridge Data to Log</Name>
+        <CallbackMethod>menuDumpAll</CallbackMethod>
+    </MenuItem>
+    <MenuItem id="createDevices">
+        <Name>Create Devices from Bridge</Name>
+        <CallbackMethod>createDevicesMenu</CallbackMethod>
+        <ButtonTitle>Create</ButtonTitle>
+        <ConfigUI>
+			<Field id="warning_note" type="label">
+				<Label>Warning:  This procedure creates new devices and makes changes to your existing devices.  Backing up your Indigo database before proceeding is highly recommended!</Label>
+			</Field>
+    		<Field id="separator0" type="separator" />
+            <Field id="bridge" type="menu">
+                <Label>Bridge/Hub:</Label>
+                <List class="self" method="get_bridge_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+    		<Field id="separator1" type="separator" />
+			<Field id="group_by" type="menu" defaultValue="Type">
+				<Label>Group New Devices By:</Label>
+				<List>
+					<Option value="None">No Folders</Option>
+					<Option value="Room">Device Location</Option>
+					<Option value="Type">Device Type</Option>
+				</List>
+			</Field>
+			<Field id="create_bridge_buttons" type="checkbox" defaultValue="false">
+				<Label>Create Smart Bridge buttons:</Label>
+			</Field>
+        </ConfigUI>
+    </MenuItem>
+    <MenuItem id="titleSeparator1" type="separator" />
+    <MenuItem id="manageLinkedDevices">
+        <Name>Manage Linked Devices...</Name>
+        <ButtonTitle>Done</ButtonTitle>
+        <ConfigUI>
+            <Field id="room" type="menu">
+                <Label>Controlling Keypad Room:</Label>
+                <List class="self" filter="" method="room_list_add"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field id="buttonDevice" type="menu">
+                <Label>Controlling Button:</Label>
+                <List class="self" filter="" method="pickButton"  dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+			<Field id="controlledDevice" type="menu">
+				<Label>Controlled Device:</Label>
+				<List class="self" method="controllableDevices" dynamicReload="true" />
+                <CallbackMethod>menuChanged</CallbackMethod>
+			</Field>
+			<Field id="linkName" type="textfield">
+				<Label>Link Name:</Label>
+			</Field>
+            <Field id="addLinkedDevice" type="button">
+                <Label/>
+                <Title>Add/Update Device</Title>
+                <CallbackMethod>addLinkedDevice</CallbackMethod>
+            </Field>
+            <Field id="sep1" type="separator"/>
+            <Field id="publishedLabel" type="label" fontColor="darkgray">
+                <Label>This is the list of Linked Devices.</Label>
+            </Field>
+            <Field id="linkedDeviceList" type="list" rows="15">
+                <Label>Linked devices:</Label>
+                <List class="self" filter="" method="listLinkedDevices" dynamicReload="true"/>
+            </Field>
+            <Field id="deleteLinkedDevices" type="button">
+                <Label/>
+                <Title>Delete Link(s)</Title>
+                <CallbackMethod>deleteLinkedDevices</CallbackMethod>
+            </Field>
+        </ConfigUI>
+    </MenuItem>
+    <MenuItem id="listDevices">
+        <CallbackMethod>logLinkedDevices</CallbackMethod>
+        <Name>Print Linked Device List to Log</Name>
+    </MenuItem>
 </MenuItems>
-
 
