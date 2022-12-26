@@ -1,3 +1,14 @@
 <?xml version="1.0"?>
 <Actions>
+    <Action id="activate_scene" deviceFilter="self.leapBridge">
+		<Name>Activate Scene</Name>
+		<CallbackMethod>activate_scene</CallbackMethod>
+		<ConfigUI>
+            <Field id="scene_id" type="menu">
+               <Label>Scene:</Label>
+                <List class="self" method="get_scene_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+		</ConfigUI>
+	</Action>
 </Actions>

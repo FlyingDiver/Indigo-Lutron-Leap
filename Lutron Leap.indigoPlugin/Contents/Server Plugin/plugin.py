@@ -445,6 +445,12 @@ class Plugin(indigo.PluginBase):
         self.logger.threaddebug(f"get_area_list: areas = {areas}")
         return areas
 
+    def get_scene_list(self, filter="", valuesDict=None, typeId="", targetId=0):
+        self.logger.threaddebug(f"get_scene_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
+        scenes = [(k, self.bridge_data[targetId]['scenes'][k]) for k in self.bridge_data[targetId]['scenes']]
+        self.logger.threaddebug(f"get_scene_list: scenes = {scenes}")
+        return scenes
+
     def get_device_list(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"get_device_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
         devices = [(k, indigo.devices[int(k)].name) for k in self.leap_devices.keys()]
@@ -501,6 +507,17 @@ class Plugin(indigo.PluginBase):
 
         elif action.deviceAction == indigo.kDimmerRelayAction.DimBy:
             self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], clamp(dev.brightness - action.actionValue, 0, 100)))
+
+    ########################################
+    # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
+    ########################################
+
+    def activate_scene(self, pluginAction, bridge_dev):
+
+        bridge = self.leap_bridges[bridge_dev.id]
+        scene_id = pluginAction.props["scene_id"]
+        self.logger.debug(f"{bridge_dev.name}: Activating scene {scene_id}")
+        self.event_loop.create_task(bridge.activate_scene(scene_id))
 
     ########################################
     # This is the method that's called by the Add Linked Device button in the config dialog.
