@@ -1,6 +1,5 @@
 <?xml version="1.0"?>
 <Events>
-    <!--
 	<Event id="buttonEvent">
         <Name>Button Event</Name>
  		<ConfigUI>
@@ -13,12 +12,12 @@
             </Field>
             <Field id="bridge" type="menu">
                 <Label>Bridge:</Label>
-                <List class="self" method="get_found_bridges" dynamicReload="true"/>
+                <List class="self" method="get_bridge_list" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
-            <Field id="buttonID" type="menu">
+            <Field id="button_address" type="menu">
                 <Label>Button:</Label>
-                <List class="self" filter="" method="pickButton"  dynamicReload="true"/>
+                <List class="self" filter="" method="get_button_list"  dynamicReload="true"/>
             </Field>
  		</ConfigUI>
 	</Event>
@@ -35,14 +34,13 @@
             </Field>
             <Field id="bridge" type="menu">
                 <Label>Bridge:</Label>
-                <List class="self" method="get_found_bridges" dynamicReload="true"/>
+                <List class="self" method="get_bridge_list" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
-            <Field id="buttonID" type="menu">
+            <Field id="button_address" type="menu">
                 <Label>Button:</Label>
-                <List class="self" filter="" method="pickButton"  dynamicReload="true"/>
+                <List class="self" filter="" method="get_button_list"  dynamicReload="true"/>
             </Field>
  		</ConfigUI>
 	</Event>
-	-->
 </Events>
