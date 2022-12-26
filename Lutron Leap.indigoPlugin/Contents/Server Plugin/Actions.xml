@@ -11,4 +11,71 @@
             </Field>
 		</ConfigUI>
 	</Action>
+    <Action id="tap_button" deviceFilter="self.leapBridge">
+		<Name>Tap Button</Name>
+		<CallbackMethod>tap_button</CallbackMethod>
+ 		<ConfigUI>
+            <Field id="button_address" type="menu">
+                <Label>Button:</Label>
+                <List class="self" filter="" method="get_button_list"  dynamicReload="true"/>
+            </Field>
+ 		</ConfigUI>
+	</Action>
+	<Action id="set_fan_speed" deviceFilter="self.ra2Fan">
+		<Name>Set Fan Speed</Name>
+		<CallbackMethod>set_fan_speed</CallbackMethod>
+		<ConfigUI>
+            <Field id="fan_speed" type="menu" defaultValue="Off">
+               <Label>Speed:</Label>
+                <List>
+                    <Option value="Off">Off</Option>
+                    <Option value="Low">Low</Option>
+                    <Option value="Medium">Medium</Option>
+                    <Option value="MediumHigh">Medium High</Option>
+                    <Option value="High">High</Option>
+                </List>
+            </Field>
+		</ConfigUI>
+	</Action>
+	<Action id="fade_dimmer" deviceFilter="self.leapDimmer">
+		<Name>Set Dimmer with Fade</Name>
+		<CallbackMethod>fade_dimmer</CallbackMethod>
+		<ConfigUI>
+			<Field id="brightness" type="textfield">
+				<Label>Brightness (0-100):</Label>
+			</Field>
+			<Field id="fadeTime" type="textfield">
+				<Label>Fade Time (in seconds):</Label>
+			</Field>
+			<Field id="simpleSeparator2" type="separator"/>
+			<Field id="messageNote" type="label" fontSize="small" fontColor="darkgray">
+				<Label>Variable and Device State Substitution is enabled for all fields. Use the format %%v:12345%% for variables and %%d:12345:someStateId%% for device states.</Label>
+			</Field>
+		</ConfigUI>
+	</Action>
+	<Action id="start_raising" deviceFilter="self.leapShade">
+		<Name>Start Shade Raising</Name>
+		<CallbackMethod>start_raising</CallbackMethod>
+	</Action>
+	<Action id="start_lowering" deviceFilter="self.leapShade">
+		<Name>Start Shade Lowering</Name>
+		<CallbackMethod>start_lowering</CallbackMethod>
+	</Action>
+	<Action id="stop_shade" deviceFilter="self.leapShade">
+		<Name>Stop Shade</Name>
+		<CallbackMethod>stop_shade</CallbackMethod>
+	</Action>
+	<Action id="set_tilt" deviceFilter="self.leapShade">
+		<Name>Set Blind Tilt</Name>
+		<CallbackMethod>set_tilt</CallbackMethod>
+		<ConfigUI>
+			<Field id="tilt" type="textfield">
+				<Label>Tilt (0-100):</Label>
+			</Field>
+			<Field id="simpleSeparator2" type="separator"/>
+			<Field id="messageNote" type="label" fontSize="small" fontColor="darkgray">
+				<Label>Variable and Device State Substitution is enabled for all fields. Use the format %%v:12345%% for variables and %%d:12345:someStateId%% for device states.</Label>
+			</Field>
+		</ConfigUI>
+	</Action>
 </Actions>

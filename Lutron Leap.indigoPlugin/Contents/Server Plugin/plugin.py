@@ -5,6 +5,7 @@ import logging
 import json
 import os
 import time
+from datetime import timedelta
 import threading
 import asyncio
 from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
@@ -459,9 +460,9 @@ class Plugin(indigo.PluginBase):
 
     def get_button_list(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"get_button_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
-        bridge_id = valuesDict.get('bridge', None)
+        bridge_id = valuesDict.get('bridge', targetId)
         buttons = []
-        if bridge_id is not None:
+        if bridge_id:
             self.logger.threaddebug(f"get_button_list: bridge_info = {bridge_id}, {self.bridge_data}")
             for button in self.bridge_data[int(bridge_id)]['buttons'].values():
                 address = f"{bridge_id}:{button['parent_device']}.{button['device_id']}"
@@ -518,6 +519,61 @@ class Plugin(indigo.PluginBase):
         scene_id = pluginAction.props["scene_id"]
         self.logger.debug(f"{bridge_dev.name}: Activating scene {scene_id}")
         self.event_loop.create_task(bridge.activate_scene(scene_id))
+
+    def tap_button(self, pluginAction, bridge_dev):
+
+        bridge = self.leap_bridges[bridge_dev.id]
+        button_address = pluginAction.props["button_address"]
+        self.logger.debug(f"{bridge_dev.name}: Tapping button {button_address}")
+        self.event_loop.create_task(bridge.tap_button(button_address.split(".")[1]))
+
+    def fade_dimmer(self, pluginAction, dev):
+
+        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
+        fadeTime = timedelta(seconds=float(indigo.activePlugin.substitute(pluginAction.props["fadeTime"])))
+        self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
+        self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime))
+
+    def start_raising(self, pluginAction, dev):
+
+        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        self.logger.debug(f"{dev.name}: Raising")
+        self.event_loop.create_task(bridge.raise_cover(dev.pluginProps["device"]))
+
+    def start_lowering(self, pluginAction, dev):
+
+        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        self.logger.debug(f"{dev.name}: Lowering")
+        self.event_loop.create_task(bridge.lower_cover(dev.pluginProps["device"]))
+
+    def stop_shade(self, pluginAction, dev):
+
+        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        self.logger.debug(f"{dev.name}: Stopping")
+        self.event_loop.create_task(bridge.stop_cover(dev.pluginProps["device"]))
+
+    def set_tilt(self, pluginAction, dev):
+
+        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        tilt = float(indigo.activePlugin.substitute(pluginAction.props["tilt"]))
+        self.logger.debug(f"{dev.name}: Tilting to {tilt}")
+        self.event_loop.create_task(bridge.set_tilt(dev.pluginProps["device"], tilt))
+
+    def set_fan_speed(self, pluginAction, dev):
+
+        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        fan_speed = pluginAction.props["fan_speed"]
+        self.logger.debug(f"{bridge_dev.name}: Setting fan speed: {fan_speed}")
+        self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], fan_speed))
+
+        gateway = dev.pluginProps[PROP_GATEWAY]
+        integrationID = dev.pluginProps[PROP_INTEGRATION_ID]
+
+        fanSpeed = pluginAction.props["fanSpeed"]
+        sendCmd = f"#OUTPUT,{integrationID},1,{fanSpeed}"
+        self._sendCommand(sendCmd, gateway)
+        self.logger.debug(f"{dev.name}: Set fan speed {fanSpeed} to {gateway}")
 
     ########################################
     # This is the method that's called by the Add Linked Device button in the config dialog.
