@@ -216,7 +216,6 @@ class Plugin(indigo.PluginBase):
         for s in bridge.get_scenes().values():
             self.bridge_data[indigo_bridge_dev.id]['scenes'][s['scene_id']] = s['name']
 
-        # get Areas before lights, switches, etc. so we can assign the correct area name to the device
         for a in bridge.areas.values():
             self.logger.debug(f"{indigo_bridge_dev.name}: Found Area: {a}")
             self.bridge_data[indigo_bridge_dev.id]['areas'][a['id']] = a
@@ -272,8 +271,12 @@ class Plugin(indigo.PluginBase):
             self.bridge_data[indigo_bridge_dev.id]['buttons'][b['device_id']] = b
             bridge.add_button_subscriber(b['device_id'], lambda event_type, button_device=b['parent_device'], button_id=b['device_id']: self.button_event(indigo_bridge_dev.id, button_device, button_id, event_type))
 
-        for lip   in bridge.lip_devices.values():
+        for lip in bridge.lip_devices.values():
             self.logger.debug(f"{indigo_bridge_dev.name}: Found lip_device: {lip}")
+
+    ##############################################################################################
+    # Event Handlers
+    ##############################################################################################
 
     def occupancy_event(self, bridge_id, group_id):
         self.logger.debug(f"occupancy_event: bridge_id = {bridge_id}, group_id = {group_id}")
