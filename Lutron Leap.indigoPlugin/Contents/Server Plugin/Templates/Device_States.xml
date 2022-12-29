@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<Template>
+    <States>
+        <State id="area" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Area</TriggerLabel>
+            <ControlPageLabel>Area</ControlPageLabel>
+        </State>
+        <State id="button_groups" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Button Groups</TriggerLabel>
+            <ControlPageLabel>Button Groups</ControlPageLabel>
+        </State>
+        <State id="current_state" defaultValue="">
+            <ValueType>Number</ValueType>
+            <TriggerLabel>Current State</TriggerLabel>
+            <ControlPageLabel>Current State</ControlPageLabel>
+        </State>
+        <State id="device_id" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Device ID</TriggerLabel>
+            <ControlPageLabel>Device ID</ControlPageLabel>
+        </State>
+        <State id="device_name" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Device Name</TriggerLabel>
+            <ControlPageLabel>Device Name</ControlPageLabel>
+        </State>
+        <State id="fan_speed" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Fan Speed</TriggerLabel>
+            <ControlPageLabel>Fan Speed</ControlPageLabel>
+        </State>
+        <State id="model" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Model</TriggerLabel>
+            <ControlPageLabel>Model</ControlPageLabel>
+        </State>
+        <State id="name" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Name</TriggerLabel>
+            <ControlPageLabel>Name</ControlPageLabel>
+        </State>
+        <State id="occupancy_sensors" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Occupancy Sensors</TriggerLabel>
+            <ControlPageLabel>Occupancy Sensors</ControlPageLabel>
+        </State>
+        <State id="serial" defaultValue="">
+            <ValueType>Number</ValueType>
+            <TriggerLabel>Serial Number</TriggerLabel>
+            <ControlPageLabel>Serial Number</ControlPageLabel>
+        </State>
+        <State id="tilt" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Tilt</TriggerLabel>
+            <ControlPageLabel>Tilt</ControlPageLabel>
+        </State>
+        <State id="type" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Device Type</TriggerLabel>
+            <ControlPageLabel>Device Type</ControlPageLabel>
+        </State>
+        <State id="zone" defaultValue="">
+            <ValueType>String</ValueType>
+            <TriggerLabel>Zone</TriggerLabel>
+            <ControlPageLabel>Zone</ControlPageLabel>
+        </State>
+    </States>
+</Template>
+

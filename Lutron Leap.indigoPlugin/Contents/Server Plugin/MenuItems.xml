@@ -23,33 +23,36 @@
 				<Label>Group New Devices By:</Label>
 				<List>
 					<Option value="None">No Folders</Option>
-					<Option value="Room">Device Location</Option>
+					<Option value="Area">Device Location</Option>
 					<Option value="Type">Device Type</Option>
 				</List>
 			</Field>
 			<Field id="create_bridge_buttons" type="checkbox" defaultValue="false">
 				<Label>Create Smart Bridge buttons:</Label>
 			</Field>
-        </ConfigUI>
+     		<Field id="separator2" type="separator" />
+			<Field id="rename_devices" type="checkbox" defaultValue="false">
+				<Label>Force rename existing devices:</Label>
+			</Field>       </ConfigUI>
     </MenuItem>
     <MenuItem id="titleSeparator1" type="separator" />
     <MenuItem id="manageLinkedDevices">
         <Name>Manage Linked Devices...</Name>
         <ButtonTitle>Done</ButtonTitle>
         <ConfigUI>
-            <Field id="room" type="menu">
-                <Label>Controlling Keypad Room:</Label>
-                <List class="self" filter="" method="room_list_add"/>
+            <Field id="bridge" type="menu">
+                <Label>Bridge/Hub:</Label>
+                <List class="self" method="get_bridge_list" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
             <Field id="buttonDevice" type="menu">
                 <Label>Controlling Button:</Label>
-                <List class="self" filter="" method="pickButton"  dynamicReload="true"/>
+                <List class="self" filter="" method="get_button_list"  dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
-			<Field id="controlledDevice" type="menu">
-				<Label>Controlled Device:</Label>
-				<List class="self" method="controllableDevices" dynamicReload="true" />
+			<Field id="linked_device" type="menu">
+				<Label>Linked Device:</Label>
+				<List class="self" method="linkable_devices" dynamicReload="true" />
                 <CallbackMethod>menuChanged</CallbackMethod>
 			</Field>
 			<Field id="linkName" type="textfield">

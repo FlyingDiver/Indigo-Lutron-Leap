@@ -47,123 +47,20 @@
         </States>
         <UiDisplayStateId>status</UiDisplayStateId>
     </Device>
-
-    <Device id="leapDimmer" type="dimmer">
-        <Name>Dimmer</Name>
-        <ConfigUI>
-			<Field id="SupportsOnState" type="checkbox" defaultValue="true" hidden="true" />
-            <Field id="address" type="textfield" hidden="true" />
-             <Field id="bridge" type="menu">
-                <Label>Bridge:</Label>
-                <List class="self" method="get_found_bridges" dynamicReload="true"/>
-                <CallbackMethod>menuChanged</CallbackMethod>
-            </Field>
-            <Field id="device" type="menu">
-                <Label>Shade:</Label>
-                <List class="self" method="get_device_list" filter="dimmer" dynamicReload="true"/>
-                <CallbackMethod>menuChanged</CallbackMethod>
-            </Field>
-        </ConfigUI>
-        <States>
-            <State id="area" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Area</TriggerLabel>
-                <ControlPageLabel>Area</ControlPageLabel>
-            </State>
-            <State id="device_id" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>device_id</TriggerLabel>
-                <ControlPageLabel>device_id</ControlPageLabel>
-            </State>
-            <State id="device_name" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>device_name</TriggerLabel>
-                <ControlPageLabel>device_name</ControlPageLabel>
-            </State>
-            <State id="model" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>model</TriggerLabel>
-                <ControlPageLabel>model</ControlPageLabel>
-            </State>
-            <State id="name" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>name</TriggerLabel>
-                <ControlPageLabel>name</ControlPageLabel>
-            </State>
-            <State id="serial" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>serial</TriggerLabel>
-                <ControlPageLabel>serial</ControlPageLabel>
-            </State>
-            <State id="dev_type" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Device Type</TriggerLabel>
-                <ControlPageLabel>Device Type</ControlPageLabel>
-            </State>
-            <State id="zone" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>zone</TriggerLabel>
-                <ControlPageLabel>zone</ControlPageLabel>
-            </State>
-        </States>
+    <Device id="leapSwitch" type="relay" allowUserCreation="false">
+        <Name>Switch</Name>
+        <Template  file="Templates/Device_States.xml" />
     </Device>
-    <Device id="leapShade" type="dimmer">
+    <Device id="leapDimmer" type="dimmer" allowUserCreation="false">
         <Name>Dimmer</Name>
-        <ConfigUI>
-			<Field id="SupportsOnState" type="checkbox" defaultValue="true" hidden="true" />
-            <Field id="address" type="textfield" hidden="true" />
-             <Field id="bridge" type="menu">
-                <Label>Bridge:</Label>
-                <List class="self" method="get_found_bridges" dynamicReload="true"/>
-                <CallbackMethod>menuChanged</CallbackMethod>
-            </Field>
-            <Field id="device" type="menu">
-                <Label>Shade:</Label>
-                <List class="self" method="get_device_list" filter="cover" dynamicReload="true"/>
-                <CallbackMethod>menuChanged</CallbackMethod>
-            </Field>
-        </ConfigUI>
-        <States>
-            <State id="area" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Area</TriggerLabel>
-                <ControlPageLabel>Area</ControlPageLabel>
-            </State>
-            <State id="device_id" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>device_id</TriggerLabel>
-                <ControlPageLabel>device_id</ControlPageLabel>
-            </State>
-            <State id="device_name" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>device_name</TriggerLabel>
-                <ControlPageLabel>device_name</ControlPageLabel>
-            </State>
-            <State id="model" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>model</TriggerLabel>
-                <ControlPageLabel>model</ControlPageLabel>
-            </State>
-            <State id="name" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>name</TriggerLabel>
-                <ControlPageLabel>name</ControlPageLabel>
-            </State>
-            <State id="serial" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>serial</TriggerLabel>
-                <ControlPageLabel>serial</ControlPageLabel>
-            </State>
-            <State id="dev_type" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Device Type</TriggerLabel>
-                <ControlPageLabel>Device Type</ControlPageLabel>
-            </State>
-            <State id="zone" defaultValue="">
-                <ValueType>String</ValueType>
-                <TriggerLabel>zone</TriggerLabel>
-                <ControlPageLabel>zone</ControlPageLabel>
-            </State>
-        </States>
+        <Template file="Templates/Device_States.xml" />
+    </Device>
+    <Device id="leapShade" type="dimmer" allowUserCreation="false">
+        <Name>Dimmer</Name>
+    <Template  file="Templates/Device_States.xml" />
+    </Device>
+     <Device id="leapFan" type="speedcontrol" allowUserCreation="false">
+        <Name>Fan</Name>
+        <Template  file="Templates/Device_States.xml" />
     </Device>
 </Devices>

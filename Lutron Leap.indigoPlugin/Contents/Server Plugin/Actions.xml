@@ -21,7 +21,7 @@
             </Field>
  		</ConfigUI>
 	</Action>
-	<Action id="set_fan_speed" deviceFilter="self.ra2Fan">
+	<Action id="set_fan_speed" deviceFilter="self.leapFan">
 		<Name>Set Fan Speed</Name>
 		<CallbackMethod>set_fan_speed</CallbackMethod>
 		<ConfigUI>

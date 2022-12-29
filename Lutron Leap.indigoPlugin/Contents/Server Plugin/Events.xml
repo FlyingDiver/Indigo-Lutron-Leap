@@ -11,9 +11,8 @@
                 </List>
             </Field>
             <Field id="bridge" type="menu">
-                <Label>Bridge:</Label>
+                <Label>Bridge/Hub:</Label>
                 <List class="self" method="get_bridge_list" dynamicReload="true"/>
-                <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
             <Field id="button_address" type="menu">
                 <Label>Button:</Label>
@@ -32,10 +31,9 @@
                     <Option value="3">Triple Press</Option>
                 </List>
             </Field>
-            <Field id="bridge" type="menu">
-                <Label>Bridge:</Label>
+             <Field id="bridge" type="menu">
+                <Label>Bridge/Hub:</Label>
                 <List class="self" method="get_bridge_list" dynamicReload="true"/>
-                <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
             <Field id="button_address" type="menu">
                 <Label>Button:</Label>

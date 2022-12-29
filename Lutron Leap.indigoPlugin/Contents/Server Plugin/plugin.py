@@ -11,7 +11,6 @@ import asyncio
 from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
 
 try:
-#    import pylutron_caseta.leap
     from pylutron_caseta import _LEAP_DEVICE_TYPES
     from pylutron_caseta.pairing import async_pair
     from pylutron_caseta.smartbridge import Smartbridge
@@ -226,6 +225,13 @@ class Plugin(indigo.PluginBase):
             self.bridge_data[indigo_bridge_dev.id]['occupancy_groups'][o['group_id']] = o
             bridge.add_occupancy_subscriber(o['group_id'], lambda group_id=o['group_id']: self.occupancy_event(indigo_bridge_dev.id, group_id))
 
+        for b in bridge.get_buttons().values():
+            self.logger.debug(f"{indigo_bridge_dev.name}: Found Button: {b['name']} ({b['parent_device']}) - {b['device_id']}")
+            self.bridge_data[indigo_bridge_dev.id]['buttons'][b['device_id']] = b
+            bridge.add_button_subscriber(b['device_id'],
+                                         lambda event_type, button_device=b['parent_device'], button_id=b['device_id']: self.button_event(
+                                             indigo_bridge_dev.id, button_device, button_id, event_type))
+
         for d in bridge.get_devices().values():
             bridge.add_subscriber(d['device_id'], lambda leap_device_id=d['device_id']: self.device_event(indigo_bridge_dev.id, leap_device_id))
 
@@ -267,14 +273,6 @@ class Plugin(indigo.PluginBase):
             else:
                 self.logger.debug(f"Found Unknown device type: {d['type']}\n{d}")
 
-        for b in bridge.get_buttons().values():
-            self.logger.debug(f"{indigo_bridge_dev.name}: Found Button: {b['name']} ({b['parent_device']}) - {b['device_id']}")
-            self.bridge_data[indigo_bridge_dev.id]['buttons'][b['device_id']] = b
-            bridge.add_button_subscriber(b['device_id'], lambda event_type, button_device=b['parent_device'], button_id=b['device_id']: self.button_event(indigo_bridge_dev.id, button_device, button_id, event_type))
-
-        for lip in bridge.lip_devices.values():
-            self.logger.debug(f"{indigo_bridge_dev.name}: Found lip_device: {lip}")
-
     ##############################################################################################
     # Event Handlers
     ##############################################################################################
@@ -284,7 +282,7 @@ class Plugin(indigo.PluginBase):
 
     def device_event(self, bridge_id, device_id):
         self.logger.debug(f"device_event: bridge_id = {bridge_id}, device_id = {device_id}")
-        # update the saved device data
+
         bridge = self.leap_bridges[bridge_id]
         data = bridge.get_device_by_id(device_id)
         self.logger.debug(f"device_event: data = {data}")
@@ -298,23 +296,53 @@ class Plugin(indigo.PluginBase):
                 dev.updateStateOnServer("onOffState", False)
             else:
                 dev.updateStateOnServer("brightnessLevel", int(level))
-            self.logger.debug(f"device_event: Dimmer {dev.name} level set to {level}")
+            self.logger.debug(f"device_event: Dimmer {dev.name} level set to {level}%")
+
         elif dev.deviceTypeId == DEV_SWITCH:
             dev.updateStateOnServer("onOffState", data['current_state'])
             self.logger.debug(f"device_event: Switch {dev.name} state set to {data['current_state']}")
+
         elif dev.deviceTypeId == DEV_FAN:
-            pass
+            self.bridge_data[bridge_id]['fans'][data['serial']] = data
+            current_state = data['current_state']
+            fan_speed = data['fan_speed']
+
+            if fan_speed == "Off":
+                dev.updateStateOnServer(SPEEDINDEX, 0)
+                dev.updateStateOnServer('ActualSpeed', 0)
+            elif fan_speed < 26.0:
+                dev.updateStateOnServer(SPEEDINDEX, 1)
+                dev.updateStateOnServer('ActualSpeed', 25)
+            elif fan_speed < 51.0:
+                dev.updateStateOnServer(SPEEDINDEX, 2)
+                dev.updateStateOnServer('ActualSpeed', 50)
+            elif fan_speed < 76.0:
+                dev.updateStateOnServer(SPEEDINDEX, 2)
+                dev.updateStateOnServer('ActualSpeed', 75)
+            else:
+                dev.updateStateOnServer(SPEEDINDEX, 3)
+                dev.updateStateOnServer('ActualSpeed', 100)
+            self.logger.debug(f"{dev.name}: Fan speed set to {fan_speed}")
+
         elif dev.deviceTypeId == DEV_COVER:
-            pass
+            self.bridge_data[bridge_id]['covers'][data['serial']] = data
+            level = float(data['current_state'])
+            if int(level) == 0:
+                dev.updateStateOnServer("onOffState", False)
+            else:
+                dev.updateStateOnServer("brightnessLevel", int(level))
+            self.logger.debug(f"device_event: Shade {dev.name} set to {level}%")
+
         elif dev.deviceTypeId == DEV_SENSOR:
             pass
+
         else:
             self.logger.debug(f"device_event: Unknown device type: {dev.deviceTypeId}")
 
     def button_event(self, bridge, button_device, button_id, event_type):
         self.logger.debug(f"button_event: button_device = {button_device}, button_id = {button_id}, event_type = {event_type}")
 
-        button_address = f"{bridge}:{button_device}.{button_id}"
+        button_address = f"{bridge}:{button_id}"
         self.logger.debug(f"button_event: button_address = {button_address}")
 
         for triggerID in self.triggers:
@@ -436,27 +464,11 @@ class Plugin(indigo.PluginBase):
         self.logger.threaddebug(f"get_bridge_list: bridges = {bridges}")
         return bridges
 
-    def get_area_list(self, filter="", valuesDict=None, typeId="", targetId=0):
-        self.logger.threaddebug(f"get_area_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
-        bridge_id = valuesDict.get('bridge', None)
-        if bridge_id is None:
-            return []
-        self.logger.threaddebug(f"get_area_list: bridge_info = {bridge_id}, {self.bridge_data}")
-        areas = [(k, v) for k, v in self.bridge_data[int(bridge_id)]['areas']]
-        self.logger.threaddebug(f"get_area_list: areas = {areas}")
-        return areas
-
     def get_scene_list(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"get_scene_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
         scenes = [(k, self.bridge_data[targetId]['scenes'][k]) for k in self.bridge_data[targetId]['scenes']]
         self.logger.threaddebug(f"get_scene_list: scenes = {scenes}")
         return scenes
-
-    def get_device_list(self, filter="", valuesDict=None, typeId="", targetId=0):
-        self.logger.threaddebug(f"get_device_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
-        devices = [(k, indigo.devices[int(k)].name) for k in self.leap_devices.keys()]
-        self.logger.threaddebug(f"get_device_list: devices = {devices}")
-        return devices
 
     def get_button_list(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"get_button_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
@@ -465,11 +477,21 @@ class Plugin(indigo.PluginBase):
         if bridge_id:
             self.logger.threaddebug(f"get_button_list: bridge_info = {bridge_id}, {self.bridge_data}")
             for button in self.bridge_data[int(bridge_id)]['buttons'].values():
-                address = f"{bridge_id}:{button['parent_device']}.{button['device_id']}"
+                address = f"{bridge_id}:{button['device_id']}"
                 name = f"{button['name']} - {button['device_id']}"
                 buttons.append((address, name))
         self.logger.threaddebug(f"get_button_list: buttons = {buttons}")
         return buttons
+
+    def linkable_devices(self, filter="", valuesDict=None, typeId="", targetId=0):
+        self.logger.threaddebug(f"linkable_devices, typeId = {typeId}, targetId = {targetId}, valuesDict = {valuesDict}")
+        retList = []
+        for dev in indigo.devices:
+            if hasattr(dev, "onState"):
+                if dev.pluginId != self.pluginId:
+                    retList.append((dev.id, dev.name))
+        retList.sort(key=lambda tup: tup[1])
+        return retList
 
     # doesn't do anything, just needed to force other menus to dynamically refresh
     def menuChanged(self, valuesDict=None, typeId=None, devId=None):  # noqa
@@ -525,7 +547,7 @@ class Plugin(indigo.PluginBase):
         bridge = self.leap_bridges[bridge_dev.id]
         button_address = pluginAction.props["button_address"]
         self.logger.debug(f"{bridge_dev.name}: Tapping button {button_address}")
-        self.event_loop.create_task(bridge.tap_button(button_address.split(".")[1]))
+        self.event_loop.create_task(bridge.tap_button(button_address.split(":")[1]))
 
     def fade_dimmer(self, pluginAction, dev):
 
@@ -583,7 +605,7 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"addLinkedDevice: valuesDict: {valuesDict}")
 
         buttonAddress = valuesDict["buttonDevice"]
-        controlledDeviceId = valuesDict["controlledDevice"]
+        linked_device_id = valuesDict["linked_device"]
         linkName = valuesDict["linkName"]
 
         buttonDeviceID = self.keypads.get(buttonAddress, None)      # look in keypads first
@@ -609,10 +631,10 @@ class Plugin(indigo.PluginBase):
             buttonLEDDeviceId = self.keypads[buttonLEDAddress]
         except:
             buttonLEDDeviceId = "0"
-        linkID = f"{buttonDeviceID}-{controlledDeviceId}"
+        linkID = f"{buttonDeviceID}-{linked_device_id}"
         if len(linkName) == 0:
             linkName = linkID
-        linkItem = {"name": linkName, "buttonDevice": buttonDeviceID, "buttonLEDDevice": buttonLEDDeviceId, "controlledDevice": controlledDeviceId,
+        linkItem = {"name": linkName, "buttonDevice": buttonDeviceID, "buttonLEDDevice": buttonLEDDeviceId, "controlledDevice": linked_device_id,
                     "buttonAddress": buttonAddress}
         self.logger.debug(f"Adding linkItem {linkID}: {linkItem}")
         self.linkedDeviceList[linkID] = linkItem
@@ -666,6 +688,7 @@ class Plugin(indigo.PluginBase):
     async def createBridgeDevices(self, valuesDict):
 
         group_by = valuesDict["group_by"]
+        rename_devices = bool(valuesDict["rename_devices"])
         self.logger.info(f"Creating Devices, Grouping = {group_by}")
 
         bridge_id = int(valuesDict["bridge"])
@@ -690,7 +713,7 @@ class Plugin(indigo.PluginBase):
                 "bridge": bridge_id,
                 "device": device_id,
             }
-            self.createLutronDevice(DEV_SWITCH, name, address, props, areaName, group_by)
+            self.createLutronDevice(DEV_SWITCH, name, address, props, areaName, group_by, rename_devices)
 
         for light in bridgeData["lights"].values():
             self.logger.info(f"Light device '{light['name']}' ({light['device_id']}), Area = {light['area']}")
@@ -707,7 +730,7 @@ class Plugin(indigo.PluginBase):
                 "bridge": bridge_id,
                 "device": light['device_id'],
             }
-            self.createLutronDevice(DEV_DIMMER, name, address, props, areaName, group_by)
+            self.createLutronDevice(DEV_DIMMER, name, address, props, areaName, group_by, rename_devices)
 
         for cover in bridgeData["covers"].values():
             self.logger.info(f"Cover device '{cover['name']}' ({cover['device_id']}), Area = {cover['area']}")
@@ -724,7 +747,7 @@ class Plugin(indigo.PluginBase):
                 "bridge": bridge_id,
                 "device": device_id,
             }
-            self.createLutronDevice(DEV_SHADE, name, address, props, areaName, group_by)
+            self.createLutronDevice(DEV_SHADE, name, address, props, areaName, group_by, rename_devices)
 
         for fan in bridgeData["fans"].values():
             self.logger.info(f"Fan device '{fan['name']}' ({fan['device_id']}), Area = {fan['area']}")
@@ -741,14 +764,14 @@ class Plugin(indigo.PluginBase):
                 "bridge": bridge_id,
                 "device": device_id,
             }
-            self.createLutronDevice(DEV_FAN, name, address, props, areaName, group_by)
+            self.createLutronDevice(DEV_FAN, name, address, props, areaName, group_by, rename_devices)
 
         self.logger.info("Creating Devices done.")
         return
 
-    def createLutronDevice(self, devType, name, address, props, room, group_by="None"):
+    def createLutronDevice(self, devType, name, address, props, area, group_by="None", rename_devices=False):
 
-        self.logger.threaddebug(f"createLutronDevice: devType = {devType}, name = {name}, address = {address}, props = {props}, room = {room}")
+        self.logger.threaddebug(f"createLutronDevice: devType = {devType}, name = {name}, address = {address}, props = {props}, room = {area}")
 
         folderNameDict = {
             DEV_DIMMER: "Lutron Dimmers",
@@ -765,8 +788,9 @@ class Plugin(indigo.PluginBase):
 
         for dev in indigo.devices.iter("self"):
             if dev.address == address:      # existing device
+                self.logger.debug(f"Device: '{name}' ({address}) already exists")
 
-                if self.rename_devices and dev.name != name:
+                if rename_devices and dev.name != name:
                     self.logger.debug(f"Renaming '{dev.name}' to '{name}'")
                     dev.name = name
                     dev.replaceOnServer()
@@ -783,8 +807,8 @@ class Plugin(indigo.PluginBase):
                 self.logger.debug(f"Creating Device Folder: '{folderName}'")
                 theFolder = indigo.devices.folder.create(folderName).id
 
-        elif group_by == "Room":
-            folderName = f"Lutron {room}"
+        elif group_by == "Area":
+            folderName = f"Lutron {area}"
             if folderName in indigo.devices.folders:
                 theFolder = indigo.devices.folders[folderName].id
             else:
