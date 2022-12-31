@@ -11,7 +11,7 @@ import asyncio
 from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
 
 try:
-    from pylutron_caseta import _LEAP_DEVICE_TYPES
+    from pylutron_caseta import _LEAP_DEVICE_TYPES, RA3_OCCUPANCY_SENSOR_DEVICE_TYPES
     from pylutron_caseta.pairing import async_pair
     from pylutron_caseta.smartbridge import Smartbridge
 except ImportError:
@@ -210,8 +210,8 @@ class Plugin(indigo.PluginBase):
         self.leap_bridges[indigo_bridge_dev.id] = bridge
         indigo_bridge_dev.updateStateOnServer('status', "Connected")
 
-        self.bridge_data[indigo_bridge_dev.id] = {'bridge': {}, 'scenes': {}, 'lights': {}, 'switches': {},
-                                       'fans': {}, 'covers': {}, 'sensors': {}, 'buttons': {}, 'areas': {}}
+        self.bridge_data[indigo_bridge_dev.id] = {'bridge': {}, 'scenes': {}, 'lights': {}, 'switches': {},'fans': {},
+                                       'covers': {}, 'sensors': {}, 'buttons': {}, 'areas': {}, 'occupancy_groups': {}}
 
         for s in bridge.get_scenes().values():
             self.bridge_data[indigo_bridge_dev.id]['scenes'][s['scene_id']] = s['name']
@@ -222,8 +222,8 @@ class Plugin(indigo.PluginBase):
 
         for o in bridge.occupancy_groups.values():
             self.logger.debug(f"{indigo_bridge_dev.name}: Found Occupancy Group: {o}")
-            self.bridge_data[indigo_bridge_dev.id]['occupancy_groups'][o['group_id']] = o
-            bridge.add_occupancy_subscriber(o['group_id'], lambda group_id=o['group_id']: self.occupancy_event(indigo_bridge_dev.id, group_id))
+            self.bridge_data[indigo_bridge_dev.id]['occupancy_groups'][o['occupancy_group_id']] = o
+            bridge.add_occupancy_subscriber(o['occupancy_group_id'], lambda group_id=o['occupancy_group_id']: self.occupancy_event(indigo_bridge_dev.id, group_id))
 
         for b in bridge.get_buttons().values():
             self.logger.debug(f"{indigo_bridge_dev.name}: Found Button: {b['name']} ({b['parent_device']}) - {b['device_id']}")
@@ -233,10 +233,11 @@ class Plugin(indigo.PluginBase):
                                              indigo_bridge_dev.id, button_device, button_id, event_type))
 
         for d in bridge.get_devices().values():
+            self.logger.debug(f"Found device: {d['name']}")
+
             bridge.add_subscriber(d['device_id'], lambda leap_device_id=d['device_id']: self.device_event(indigo_bridge_dev.id, leap_device_id))
 
             if d['type'] in ['SmartBridge', 'SmartBridge Pro']:
-                self.logger.debug(f"Found Bridge device: {d['name']}")
                 self.bridge_data[indigo_bridge_dev.id]['bridge'] = d
 
                 update_list = [
@@ -251,27 +252,25 @@ class Plugin(indigo.PluginBase):
                     self.logger.error(f"{indigo_bridge_dev.name}: failed to update states: {e}")
 
             elif d['type'] in _LEAP_DEVICE_TYPES['light']:
-                self.logger.debug(f"Found Light device: {d['name']}")
                 self.bridge_data[indigo_bridge_dev.id]['lights'][d['serial']] = d
 
             elif d['type'] in _LEAP_DEVICE_TYPES['switch']:
-                self.logger.debug(f"Found Switch device: {d['name']}")
                 self.bridge_data[indigo_bridge_dev.id]['switches'][d['serial']] = d
 
             elif d['type'] in _LEAP_DEVICE_TYPES['fan']:
-                self.logger.debug(f"Found Fan device: {d['name']}")
                 self.bridge_data[indigo_bridge_dev.id]['fans'][d['serial']] = d
 
             elif d['type'] in _LEAP_DEVICE_TYPES['cover']:
-                self.logger.debug(f"Found Cover device: {d['name']}")
                 self.bridge_data[indigo_bridge_dev.id]['shades'][d['serial']] = d
 
             elif d['type'] in _LEAP_DEVICE_TYPES['sensor']:
-                self.logger.debug(f"Found Sensor device: {d['name']}")
+                self.bridge_data[indigo_bridge_dev.id]['sensors'][d['serial']] = d
+
+            elif d['type'] in RA3_OCCUPANCY_SENSOR_DEVICE_TYPES:
                 self.bridge_data[indigo_bridge_dev.id]['sensors'][d['serial']] = d
 
             else:
-                self.logger.debug(f"Found Unknown device type: {d['type']}\n{d}")
+                self.logger.debug(f"Unknown device type: {d['type']}\n{d}")
 
     ##############################################################################################
     # Event Handlers
@@ -279,6 +278,15 @@ class Plugin(indigo.PluginBase):
 
     def occupancy_event(self, bridge_id, group_id):
         self.logger.debug(f"occupancy_event: bridge_id = {bridge_id}, group_id = {group_id}")
+        data = self.leap_bridges[bridge_id].occupancy_groups[group_id]
+        self.logger.debug(f"occupancy_event: data = {data}")
+
+        for triggerID in self.triggers:
+            trigger = indigo.triggers[triggerID]
+            if trigger.pluginTypeId == "occupancy_event":
+                if trigger.pluginProps['occupancy_group'] == f"{bridge_id}:{data['occupancy_group_id']}" and \
+                        trigger.pluginProps['event_type'] == data['status']:
+                    indigo.trigger.execute(trigger)
 
     def device_event(self, bridge_id, device_id):
         self.logger.debug(f"device_event: bridge_id = {bridge_id}, device_id = {device_id}")
@@ -482,6 +490,19 @@ class Plugin(indigo.PluginBase):
                 buttons.append((address, name))
         self.logger.threaddebug(f"get_button_list: buttons = {buttons}")
         return buttons
+
+    def get_occupancy_group_list(self, filter="", valuesDict=None, typeId="", targetId=0):
+        self.logger.threaddebug(f"get_occupancy_group_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
+        bridge_id = valuesDict.get('bridge', targetId)
+        occupancy_groups = []
+        if bridge_id:
+            self.logger.threaddebug(f"get_occupancy_group_list: bridge_info = {bridge_id}, {self.bridge_data[int(bridge_id)]['occupancy_groups']}")
+            for group in self.bridge_data[int(bridge_id)]['occupancy_groups'].values():
+                address = f"{bridge_id}:{group['occupancy_group_id']}"
+                name = f"{group['name']} - {group['occupancy_group_id']}"
+                occupancy_groups.append((address, name))
+        self.logger.threaddebug(f"get_occupancy_group_list: occupancy_groups = {occupancy_groups}")
+        return occupancy_groups
 
     def linkable_devices(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"linkable_devices, typeId = {typeId}, targetId = {targetId}, valuesDict = {valuesDict}")

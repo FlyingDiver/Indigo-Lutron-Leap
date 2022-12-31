@@ -18,6 +18,7 @@
             <Field id="button_address" type="menu">
                 <Label>Button:</Label>
                 <List class="self" filter="" method="get_button_list"  dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
  		</ConfigUI>
 	</Action>
