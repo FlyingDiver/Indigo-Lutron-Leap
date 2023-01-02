@@ -286,23 +286,17 @@ class Plugin(indigo.PluginBase):
 
         elif dev.deviceTypeId == DEV_FAN:
             fan_speed = data['fan_speed']
-
+            self.logger.debug(f"{dev.name}: Fan speed is now {fan_speed}")
             if fan_speed == "Off":
-                dev.updateStateOnServer(SPEEDINDEX, 0)
-                dev.updateStateOnServer('ActualSpeed', 0)
-            elif fan_speed < 26.0:
-                dev.updateStateOnServer(SPEEDINDEX, 1)
-                dev.updateStateOnServer('ActualSpeed', 25)
-            elif fan_speed < 51.0:
-                dev.updateStateOnServer(SPEEDINDEX, 2)
-                dev.updateStateOnServer('ActualSpeed', 50)
-            elif fan_speed < 76.0:
-                dev.updateStateOnServer(SPEEDINDEX, 2)
-                dev.updateStateOnServer('ActualSpeed', 75)
-            else:
-                dev.updateStateOnServer(SPEEDINDEX, 3)
-                dev.updateStateOnServer('ActualSpeed', 100)
-            self.logger.debug(f"{dev.name}: Fan speed set to {fan_speed}")
+                dev.updateStateOnServer("speedIndex", 0, uiValue="Off")
+            elif fan_speed == "Low":
+                dev.updateStateOnServer("speedIndex", 1, uiValue="Low")
+            elif fan_speed == "Medium":
+                dev.updateStateOnServer("speedIndex", 2, uiValue="Medium")
+            elif fan_speed == "MediumHigh":
+                dev.updateStateOnServer("speedIndex", 2, uiValue="MediumHigh")      # MediumHigh is treated as Medium
+            elif fan_speed == "High":
+                dev.updateStateOnServer("speedIndex", 3, uiValue="High")
 
         elif dev.deviceTypeId == DEV_SHADE:
             level = float(data['current_state'])
@@ -311,9 +305,6 @@ class Plugin(indigo.PluginBase):
             else:
                 dev.updateStateOnServer("brightnessLevel", int(level))
             self.logger.debug(f"device_event: Shade {dev.name} set to {level}%")
-
-        elif dev.deviceTypeId == DEV_SENSOR:
-            pass
 
         else:
             self.logger.debug(f"device_event: Unknown device type: {dev.deviceTypeId}")
@@ -518,10 +509,6 @@ class Plugin(indigo.PluginBase):
         return valuesDict
 
     ########################################
-    # Menu and Action methods
-    ########################################
-
-    ########################################
     # Relay / Dimmer / Shade
     ########################################
     def actionControlDimmerRelay(self, action, dev):
@@ -551,24 +538,62 @@ class Plugin(indigo.PluginBase):
             self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], clamp(dev.brightness - action.actionValue, 0, 100)))
 
     ########################################
+    # Fans
+    ########################################
+    def actionControlSpeedControl(self, action, dev):
+        self.logger.debug(f"{dev.name}: actionControlSpeedControl: action = {action}")
+        if dev.deviceTypeId != "leapFan":
+            self.logger.warning(f"{dev.name}: actionControlSpeedControl: not a leapFan device")
+            return
+
+        if action.speedControlAction == indigo.kSpeedControlAction.SetSpeedIndex:
+            self.logger.debug(f"{dev.name}: SetSpeedIndex to {action.actionValue}")
+            self.set_fan_speed(dev, action.actionValue)
+
+        elif action.speedControlAction == indigo.kSpeedControlAction.IncreaseSpeedIndex:
+            self.logger.debug(f"{dev.name}: IncreaseSpeedIndex by {action.actionValue}")
+            new_speed_index = min(dev.speedIndex + action.actionValue, 3)
+            self.set_fan_speed(dev, new_speed_index)
+
+        elif action.speedControlAction == indigo.kSpeedControlAction.DecreaseSpeedIndex:
+            self.logger.debug(f"{dev.name}: DecreaseSpeedIndex by {action.actionValue}")
+            new_speed_index = max(dev.speedIndex - action.actionValue, 0)
+            self.set_fan_speed(dev, new_speed_index)
+
+    def set_fan_speed(self, dev, speed_index):
+        self.logger.debug(f"{dev.name}: set_fan peed_index = {speed_index}")
+        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+
+        if speed_index == 0:
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Off"))
+        elif speed_index == 1:
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Low"))
+        elif speed_index == 2:
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Medium"))
+        elif speed_index == 3:
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "High"))
+        else:
+            self.logger.error(f"{dev.name}: Invalid speedIndex = {speed_index}")
+
+    ########################################
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
     ########################################
 
-    def activate_scene(self, pluginAction, bridge_dev):
+    def activate_scene_action(self, pluginAction, bridge_dev):
 
         bridge = self.leap_bridges[bridge_dev.id]
         scene_id = pluginAction.props["scene_id"]
         self.logger.debug(f"{bridge_dev.name}: Activating scene {scene_id}")
         self.event_loop.create_task(bridge.activate_scene(scene_id))
 
-    def tap_button(self, pluginAction, bridge_dev):
+    def tap_button_action(self, pluginAction, bridge_dev):
 
         bridge = self.leap_bridges[bridge_dev.id]
         button_address = pluginAction.props["button_address"]
         self.logger.debug(f"{bridge_dev.name}: Tapping button {button_address}")
         self.event_loop.create_task(bridge.tap_button(button_address.split(":")[1]))
 
-    def fade_dimmer(self, pluginAction, dev):
+    def fade_dimmer_action(self, pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
@@ -576,45 +601,37 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
         self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime))
 
-    def start_raising(self, pluginAction, dev):
+    def start_raising_action(self, pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         self.logger.debug(f"{dev.name}: Raising")
         self.event_loop.create_task(bridge.raise_cover(dev.pluginProps["device"]))
 
-    def start_lowering(self, pluginAction, dev):
+    def start_lowering_action(self, pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         self.logger.debug(f"{dev.name}: Lowering")
         self.event_loop.create_task(bridge.lower_cover(dev.pluginProps["device"]))
 
-    def stop_shade(self, pluginAction, dev):
+    def stop_shade_action(self, pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         self.logger.debug(f"{dev.name}: Stopping")
         self.event_loop.create_task(bridge.stop_cover(dev.pluginProps["device"]))
 
-    def set_tilt(self, pluginAction, dev):
+    def set_tilt_action(self, pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         tilt = float(indigo.activePlugin.substitute(pluginAction.props["tilt"]))
         self.logger.debug(f"{dev.name}: Tilting to {tilt}")
         self.event_loop.create_task(bridge.set_tilt(dev.pluginProps["device"], tilt))
 
-    def set_fan_speed(self, pluginAction, dev):
+    def set_fan_speed_action(self, pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         fan_speed = pluginAction.props["fan_speed"]
         self.logger.debug(f"{bridge_dev.name}: Setting fan speed: {fan_speed}")
         self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], fan_speed))
-
-        gateway = dev.pluginProps[PROP_GATEWAY]
-        integrationID = dev.pluginProps[PROP_INTEGRATION_ID]
-
-        fanSpeed = pluginAction.props["fanSpeed"]
-        sendCmd = f"#OUTPUT,{integrationID},1,{fanSpeed}"
-        self._sendCommand(sendCmd, gateway)
-        self.logger.debug(f"{dev.name}: Set fan speed {fanSpeed} to {gateway}")
 
     ########################################
     # This is the method that's called by the Add Linked Device button in the config dialog.

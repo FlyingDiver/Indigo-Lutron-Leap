@@ -2,7 +2,7 @@
 <Actions>
     <Action id="activate_scene" deviceFilter="self.leapBridge">
 		<Name>Activate Scene</Name>
-		<CallbackMethod>activate_scene</CallbackMethod>
+		<CallbackMethod>activate_scene_action</CallbackMethod>
 		<ConfigUI>
             <Field id="scene_id" type="menu">
                <Label>Scene:</Label>
@@ -13,7 +13,7 @@
 	</Action>
     <Action id="tap_button" deviceFilter="self.leapBridge">
 		<Name>Tap Button</Name>
-		<CallbackMethod>tap_button</CallbackMethod>
+		<CallbackMethod>tap_button_action</CallbackMethod>
  		<ConfigUI>
             <Field id="button_address" type="menu">
                 <Label>Button:</Label>
@@ -22,25 +22,9 @@
             </Field>
  		</ConfigUI>
 	</Action>
-	<Action id="set_fan_speed" deviceFilter="self.leapFan">
-		<Name>Set Fan Speed</Name>
-		<CallbackMethod>set_fan_speed</CallbackMethod>
-		<ConfigUI>
-            <Field id="fan_speed" type="menu" defaultValue="Off">
-               <Label>Speed:</Label>
-                <List>
-                    <Option value="Off">Off</Option>
-                    <Option value="Low">Low</Option>
-                    <Option value="Medium">Medium</Option>
-                    <Option value="MediumHigh">Medium High</Option>
-                    <Option value="High">High</Option>
-                </List>
-            </Field>
-		</ConfigUI>
-	</Action>
 	<Action id="fade_dimmer" deviceFilter="self.leapDimmer">
 		<Name>Set Dimmer with Fade</Name>
-		<CallbackMethod>fade_dimmer</CallbackMethod>
+		<CallbackMethod>fade_dimmer_action</CallbackMethod>
 		<ConfigUI>
 			<Field id="brightness" type="textfield">
 				<Label>Brightness (0-100):</Label>
@@ -56,19 +40,19 @@
 	</Action>
 	<Action id="start_raising" deviceFilter="self.leapShade">
 		<Name>Start Shade Raising</Name>
-		<CallbackMethod>start_raising</CallbackMethod>
+		<CallbackMethod>start_raising_action</CallbackMethod>
 	</Action>
 	<Action id="start_lowering" deviceFilter="self.leapShade">
 		<Name>Start Shade Lowering</Name>
-		<CallbackMethod>start_lowering</CallbackMethod>
+		<CallbackMethod>start_lowering_action</CallbackMethod>
 	</Action>
 	<Action id="stop_shade" deviceFilter="self.leapShade">
 		<Name>Stop Shade</Name>
-		<CallbackMethod>stop_shade</CallbackMethod>
+		<CallbackMethod>stop_shade_action</CallbackMethod>
 	</Action>
 	<Action id="set_tilt" deviceFilter="self.leapShade">
 		<Name>Set Blind Tilt</Name>
-		<CallbackMethod>set_tilt</CallbackMethod>
+		<CallbackMethod>set_tilt_action</CallbackMethod>
 		<ConfigUI>
 			<Field id="tilt" type="textfield">
 				<Label>Tilt (0-100):</Label>
@@ -77,6 +61,22 @@
 			<Field id="messageNote" type="label" fontSize="small" fontColor="darkgray">
 				<Label>Variable and Device State Substitution is enabled for all fields. Use the format %%v:12345%% for variables and %%d:12345:someStateId%% for device states.</Label>
 			</Field>
+		</ConfigUI>
+	</Action>
+	<Action id="set_fan_speed" deviceFilter="self.leapFan">
+		<Name>Set Fan Speed</Name>
+		<CallbackMethod>set_fan_speed_action</CallbackMethod>
+		<ConfigUI>
+            <Field id="set_fan_speed" type="menu" defaultValue="Off">
+               <Label>Speed:</Label>
+                <List>
+                    <Option value="Off">Off</Option>
+                    <Option value="Low">Low</Option>
+                    <Option value="Medium">Medium</Option>
+                    <Option value="MediumHigh">Medium High</Option>
+                    <Option value="High">High</Option>
+                </List>
+            </Field>
 		</ConfigUI>
 	</Action>
 </Actions>
