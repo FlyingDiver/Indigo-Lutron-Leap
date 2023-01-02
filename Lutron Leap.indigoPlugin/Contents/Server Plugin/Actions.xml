@@ -67,7 +67,7 @@
 		<Name>Set Fan Speed</Name>
 		<CallbackMethod>set_fan_speed_action</CallbackMethod>
 		<ConfigUI>
-            <Field id="set_fan_speed" type="menu" defaultValue="Off">
+            <Field id="fan_speed" type="menu" defaultValue="Off">
                <Label>Speed:</Label>
                 <List>
                     <Option value="Off">Off</Option>
