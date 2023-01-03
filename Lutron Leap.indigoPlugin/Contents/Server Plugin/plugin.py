@@ -22,6 +22,7 @@ DEV_DIMMER = "leapDimmer"
 DEV_SWITCH = "leapSwitch"
 DEV_SHADE  = "leapShade"
 DEV_FAN    = "leapFan"
+DEV_GROUP = "occupancy_group"
 
 _FAN_SPEED_MAP = {
     0: "Off",
@@ -301,6 +302,26 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"occupancy_event: bridge_id = {bridge_id}, group_id = {group_id}")
         data = self.leap_bridges[bridge_id].occupancy_groups[group_id]
         self.logger.debug(f"occupancy_event: data = {data}")
+        self.bridge_data[bridge_id]['occupancy_groups'][data['occupancy_group_id']] = data
+
+        dev = indigo.devices[self.leap_devices[f"{bridge_id}:GROUP.{group_id}"]]   # occupancy group device
+        dev.updateStateOnServer("onOffState",(data['status'] == "Occupied"))
+        if data['status'] == "Occupied":
+            dev.updateStateImageOnServer(indigo.kStateImageSel.MotionSensorTripped)
+        else:
+            dev.updateStateImageOnServer(indigo.kStateImageSel.MotionSensor)
+        self.logger.debug(f"occupancy_event: Group {dev.name} set to {data['status']}")
+        update_list = [
+            {'key': "area", 'value': data['area']},
+            {'key': "occupancy_group_id", 'value': data['occupancy_group_id']},
+            {'key': "sensors", 'value': json.dumps(data['sensors'])},
+            {'key': "name", 'value': data['name']},
+            {'key': "device_name", 'value': data['device_name']},
+        ]
+        try:
+            dev.updateStatesOnServer(update_list)
+        except Exception as e:
+            self.logger.error(f"{dev.name}: failed to update states: {e}")
 
         for triggerID in self.triggers:
             trigger = indigo.triggers[triggerID]
@@ -693,12 +714,12 @@ class Plugin(indigo.PluginBase):
         return True
 
     def createDevicesMenu(self, valuesDict, typeId):
-        self.event_loop.create_task(self.createBridgeDevices(valuesDict))
+        self.event_loop.create_task(self.create_bridge_devices(valuesDict))
         return True
 
     ########################################
 
-    async def createBridgeDevices(self, valuesDict):
+    async def create_bridge_devices(self, valuesDict):
 
         group_by = valuesDict["group_by"]
         rename_devices = bool(valuesDict["rename_devices"])
@@ -710,6 +731,23 @@ class Plugin(indigo.PluginBase):
             return
 
         bridgeData = self.bridge_data[bridge_id]
+
+        for dev in bridgeData["occupancy_groups"].values():
+            self.logger.info(f"Occupancy Group '{dev['name']}' ({dev['occupancy_group_id']}), Area = {dev['area']}")
+
+            try:
+                areaName = bridgeData['areas'][dev['area']]['name']
+            except KeyError:
+                areaName = "Unknown"
+
+            address = f"{bridge_id}:GROUP.{dev['occupancy_group_id']}"
+            name = f"{dev['name']} ({dev['occupancy_group_id']})"
+            props = {
+                "room": areaName,
+                "bridge": bridge_id,
+                "device": dev['occupancy_group_id'],
+            }
+            self.create_leap_device(DEV_GROUP, name, address, props, areaName, group_by, rename_devices)
 
         for dev in bridgeData["devices"].values():
             self.logger.info(f"Device '{dev['name']}' ({dev['device_id']}), Area = {dev['area']}")
@@ -749,20 +787,21 @@ class Plugin(indigo.PluginBase):
                 self.logger.warning(f"Unknown device type {dev['type']}")
                 continue
 
-            self.createLutronDevice(dev_type, name, address, props, areaName, group_by, rename_devices)
+            self.create_leap_device(dev_type, name, address, props, areaName, group_by, rename_devices)
 
         self.logger.info("Creating Devices done.")
         return
 
-    def createLutronDevice(self, devType, name, address, props, area, group_by="None", rename_devices=False):
+    def create_leap_device(self, devType, name, address, props, area, group_by="None", rename_devices=False):
 
-        self.logger.threaddebug(f"createLutronDevice: devType = {devType}, name = {name}, address = {address}, props = {props}, room = {area}")
+        self.logger.threaddebug(f"create_leap_device: devType = {devType}, name = {name}, address = {address}, props = {props}, room = {area}")
 
         folderNameDict = {
             DEV_DIMMER: "Lutron Dimmers",
             DEV_SWITCH: "Lutron Switches",
             DEV_FAN: "Lutron Fans",
             DEV_SHADE: "Lutron Shades",
+            DEV_GROUP: "Lutron Occupancy Groups",
         }
 
         # first, make sure this device doesn't exist.  Unless I screwed up, the addresses should be unique
@@ -771,7 +810,7 @@ class Plugin(indigo.PluginBase):
 
         for dev in indigo.devices.iter("self"):
             if dev.address == address:  # existing device
-                self.logger.debug(f"Device: '{name}' ({address}) already exists")
+                self.logger.debug(f"Indigo device: '{name}' ({address}) already exists")
 
                 if rename_devices and dev.name != name:
                     self.logger.debug(f"Renaming '{dev.name}' to '{name}'")
