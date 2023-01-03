@@ -56,7 +56,7 @@ class Plugin(indigo.PluginBase):
 
         self.leap_bridges = {}  # devices with matching Indigo devices
         self.leap_devices = {}
-        self.linkedDeviceList = {}
+        self.linked_device_list = {}
 
         self.lastKeyTime = time.time()
         self.lastKeyAddress = ""
@@ -80,10 +80,10 @@ class Plugin(indigo.PluginBase):
 
     def startup(self):
         self.logger.debug("startup")
-        savedList = self.pluginPrefs.get("linkedDevices", None)
+        savedList = self.pluginPrefs.get("linked_devices", None)
         if savedList:
-            self.linkedDeviceList = json.loads(savedList)
-            self.logLinkedDevices()
+            self.linked_device_list = json.loads(savedList)
+            self.log_linked_devices()
 
         indigo.devices.subscribeToChanges()
 
@@ -110,38 +110,19 @@ class Plugin(indigo.PluginBase):
         #
         ################################################################################
 
-    def deviceDeleted(self, delDevice):
-        indigo.PluginBase.deviceDeleted(self, delDevice)
+    def deviceDeleted(self, deleted_device):
+        indigo.PluginBase.deviceDeleted(self, deleted_device)
 
-        for linkID in list(self.linkedDeviceList.keys()):
-            linkItem = self.linkedDeviceList[linkID]
-            if (delDevice.id == int(linkItem["buttonDevice"])) or (delDevice.id == int(linkItem["buttonLEDDevice"])) or (
-                    delDevice.id == int(linkItem["controlledDevice"])):
-                self.logger.info(f"A linked device ({delDevice.name}) has been deleted.  Deleting link: {linkItem['name']}")
-                del self.linkedDeviceList[linkID]
-                self.logLinkedDevices()
-
-                indigo.activePlugin.pluginPrefs["linkedDevices"] = json.dumps(self.linkedDeviceList)
+        for link_id in list(self.linked_device_list.keys()):
+            link_item = self.linked_device_list[link_id]
+            if deleted_device.id == int(link_item["linked_device_id"]):
+                self.logger.info(f"A linked device ({deleted_device.name}) has been deleted.  Deleting link: {link_item['name']}")
+                del self.linked_device_list[link_id]
+                self.log_linked_devices()
+                indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
     def deviceUpdated(self, oldDevice, newDevice):
         indigo.PluginBase.deviceUpdated(self, oldDevice, newDevice)
-
-        for linkName, linkItem in self.linkedDeviceList.items():
-            controlledDevice = indigo.devices[int(linkItem["controlledDevice"])]
-            buttonDevice = indigo.devices[int(linkItem["buttonDevice"])]
-
-            if oldDevice.id == controlledDevice.id:
-
-                self.logger.debug(f"A linked device ({controlledDevice.name}) has been updated: {controlledDevice.onState}")
-                try:
-                    buttonLEDDevice = indigo.devices[int(linkItem["buttonLEDDevice"])]
-                except Exception as e:
-                    pass
-                else:
-                    if controlledDevice.onState:
-                        indigo.device.turnOn(buttonLEDDevice.id)
-                    else:
-                        indigo.device.turnOff(buttonLEDDevice.id)
 
     ##############################################################################################
 
@@ -343,20 +324,21 @@ class Plugin(indigo.PluginBase):
                         trigger.pluginProps['button_address'] == button_address:
                     indigo.trigger.execute(trigger)
 
-        # check for linked devices
-        for linkItem in self.linkedDeviceList.values():
-            controlledDevice = indigo.devices[int(linkItem["controlledDevice"])]
-            buttonAddress = linkItem["buttonAddress"]
-            if buttonAddress == button_id:
-                self.logger.debug(f"Linked Device Match, buttonAddress: {buttonAddress}, controlledDevice: {controlledDevice.id}")
-                indigo.device.toggle(controlledDevice.id)
-
-        # and update the tap count for multi-press triggers, only on PRESS events
         if event_type == "Press":
+            # and update the tap count for multi-press triggers, only on PRESS events
             if (button_address == self.lastKeyAddress) and (time.time() < (self.lastKeyTime + self.click_timeout)):
                 self.lastKeyTaps += 1
             else:
                 self.lastKeyTaps = 1
+
+            # check for linked devices, again only on PRESS events
+            for link_item in self.linked_device_list.values():
+                self.logger.debug(f"Linked Device check, link_item: {link_item}")
+                controlling_button = link_item["controlling_button"]
+                if controlling_button == button_address:
+                    linked_device = indigo.devices[int(link_item["linked_device_id"])]
+                    self.logger.debug(f"Linked Device Match, controlling_button: {controlling_button}, linked_device: {linked_device.id}")
+                    indigo.device.toggle(linked_device.id)
 
         self.lastKeyAddress = button_address
         self.lastKeyTime = time.time()
@@ -653,80 +635,56 @@ class Plugin(indigo.PluginBase):
         self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], fan_speed))
 
     ########################################
-    # This is the method that's called by the Add Linked Device button in the config dialog.
+    # Methods to handle the Manage Linked Devices dialog
     ########################################
 
-    def addLinkedDevice(self, valuesDict, typeId=None, devId=None):
-        self.logger.debug(f"addLinkedDevice: valuesDict: {valuesDict}")
+    def add_linked_device(self, valuesDict, typeId=None, devId=None):
+        self.logger.debug(f"add_linked_device: valuesDict: {valuesDict}")
 
-        buttonAddress = valuesDict["buttonDevice"]
+        controlling_button = valuesDict["controlling_button"]
         linked_device_id = valuesDict["linked_device"]
-        linkName = valuesDict["linkName"]
+        link_name = valuesDict["link_name"]
 
-        buttonDeviceID = self.keypads.get(buttonAddress, None)  # look in keypads first
-        self.logger.debug(f"addLinkedDevice: buttonAddress: {buttonAddress}, buttonDeviceID: {buttonDeviceID}")
-
-        if buttonDeviceID is None:
-            buttonDeviceID = self.picos.get(buttonAddress, None)  # then look in picos
-            self.logger.debug(f"addLinkedDevice: buttonAddress: {buttonAddress}, buttonDeviceID: {buttonDeviceID}")
-
-        if buttonDeviceID is None:
-            self.logger.error(f"addLinkedDevice: buttonAddress {buttonAddress} not found in keypads or picos")
+        if controlling_button is None:
+            self.logger.error(f"add_linked_device: controlling_button {controlling_button} not found")
             return
 
-        self.logger.debug(f"addLinkedDevice: buttonAddress: {buttonAddress}, buttonDeviceID: {buttonDeviceID}")
+        self.logger.debug(f"add_linked_device: controlling_button: {controlling_button}")
 
-        parts = buttonAddress.split(":")
-        gatewayID = parts[0]
-        parts = parts[1].split(".")
-        deviceID = parts[0]
-        componentID = parts[1]
-        buttonLEDAddress = f"{gatewayID}:{deviceID}.{int(componentID) + 80}"
-        try:
-            buttonLEDDeviceId = self.keypads[buttonLEDAddress]
-        except Exception as e:
-            buttonLEDDeviceId = "0"
-        linkID = f"{buttonDeviceID}-{linked_device_id}"
-        if len(linkName) == 0:
-            linkName = linkID
-        linkItem = {"name": linkName, "buttonDevice": buttonDeviceID, "buttonLEDDevice": buttonLEDDeviceId, "controlledDevice": linked_device_id,
-                    "buttonAddress": buttonAddress}
-        self.logger.debug(f"Adding linkItem {linkID}: {linkItem}")
-        self.linkedDeviceList[linkID] = linkItem
-        self.logLinkedDevices()
+        link_id = f"{controlling_button}-{linked_device_id}"
+        if len(link_name) == 0:
+            link_name = link_id
+        link_item = {"name": link_name, "controlling_button": controlling_button, "linked_device_id": linked_device_id}
+        self.logger.debug(f"Adding link_item {link_id}: {link_item}")
+        self.linked_device_list[link_id] = link_item
+        self.log_linked_devices()
 
-        indigo.activePlugin.pluginPrefs["linkedDevices"] = json.dumps(self.linkedDeviceList)
+        indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
-    ########################################
-    # This is the method that's called by the Delete Device button
-    ########################################
-
-    def deleteLinkedDevices(self, valuesDict, typeId=None, devId=None):
+    def delete_linked_devices(self, valuesDict, typeId=None, devId=None):
 
         for item in valuesDict["linkedDeviceList"]:
             self.logger.info(f"deleting device {item}")
-            del self.linkedDeviceList[item]
+            del self.linked_device_list[item]
 
-        self.logLinkedDevices()
-        indigo.activePlugin.pluginPrefs["linkedDevices"] = json.dumps(self.linkedDeviceList)
+        self.log_linked_devices()
+        indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
-    def listLinkedDevices(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def list_linked_devices(self, filter="", valuesDict=None, typeId="", targetId=0):
         returnList = list()
-        for linkID, linkItem in self.linkedDeviceList.items():
+        for linkID, linkItem in self.linked_device_list.items():
             returnList.append((linkID, linkItem["name"]))
         return sorted(returnList, key=lambda item: item[1])
 
-    def logLinkedDevices(self):
-        if len(self.linkedDeviceList) == 0:
+    def log_linked_devices(self):
+        if len(self.linked_device_list) == 0:
             self.logger.info("No linked Devices")
             return
 
-        fstring = "{:^25} {:^25} {:^20} {:^20} {:^20} {:^20}"
-        self.logger.info(fstring.format("Link ID", "Link Name", "buttonDevice", "buttonLEDDevice", "controlledDevice", "buttonAddress"))
-        for linkID, linkItem in self.linkedDeviceList.items():
-            self.logger.info(
-                fstring.format(linkID, linkItem["name"], linkItem["buttonDevice"], linkItem["buttonLEDDevice"], linkItem["controlledDevice"],
-                               linkItem["buttonAddress"]))
+        fstring = "{:^25} {:^25} {:^20} {:^20}"
+        self.logger.info(fstring.format("Link ID", "Link Name", "Controlling Button", "Linked Device"))
+        for link_id, link_item in self.linked_device_list.items():
+            self.logger.info(fstring.format(link_id, link_item["name"], link_item["controlling_button"], link_item["linked_device_id"]))
 
     ########################################
 

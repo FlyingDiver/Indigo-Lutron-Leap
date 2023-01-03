@@ -45,7 +45,7 @@
                 <List class="self" method="get_bridge_list" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
-            <Field id="buttonDevice" type="menu">
+            <Field id="controlling_button" type="menu">
                 <Label>Controlling Button:</Label>
                 <List class="self" filter="" method="get_button_list"  dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
@@ -55,13 +55,13 @@
 				<List class="self" method="linkable_devices" dynamicReload="true" />
                 <CallbackMethod>menuChanged</CallbackMethod>
 			</Field>
-			<Field id="linkName" type="textfield">
+			<Field id="link_name" type="textfield">
 				<Label>Link Name:</Label>
 			</Field>
-            <Field id="addLinkedDevice" type="button">
+            <Field id="add_linked_device" type="button">
                 <Label/>
                 <Title>Add/Update Device</Title>
-                <CallbackMethod>addLinkedDevice</CallbackMethod>
+                <CallbackMethod>add_linked_device</CallbackMethod>
             </Field>
             <Field id="sep1" type="separator"/>
             <Field id="publishedLabel" type="label" fontColor="darkgray">
@@ -69,17 +69,17 @@
             </Field>
             <Field id="linkedDeviceList" type="list" rows="15">
                 <Label>Linked devices:</Label>
-                <List class="self" filter="" method="listLinkedDevices" dynamicReload="true"/>
+                <List class="self" filter="" method="list_linked_devices" dynamicReload="true"/>
             </Field>
-            <Field id="deleteLinkedDevices" type="button">
+            <Field id="delete_linked_devices" type="button">
                 <Label/>
                 <Title>Delete Link(s)</Title>
-                <CallbackMethod>deleteLinkedDevices</CallbackMethod>
+                <CallbackMethod>delete_linked_devices</CallbackMethod>
             </Field>
         </ConfigUI>
     </MenuItem>
     <MenuItem id="listDevices">
-        <CallbackMethod>logLinkedDevices</CallbackMethod>
+        <CallbackMethod>log_linked_devices</CallbackMethod>
         <Name>Print Linked Device List to Log</Name>
     </MenuItem>
 </MenuItems>
