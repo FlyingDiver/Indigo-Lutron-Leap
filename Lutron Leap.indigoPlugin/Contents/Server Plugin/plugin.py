@@ -23,6 +23,13 @@ DEV_SWITCH = "leapSwitch"
 DEV_SHADE  = "leapShade"
 DEV_FAN    = "leapFan"
 
+_FAN_SPEED_MAP = {
+    0: "Off",
+    1: "Low",
+    2: "Medium",
+    3: "High",
+}
+
 def clamp(n, minn, maxn):
     return max(min(maxn, n), minn)
 
@@ -540,40 +547,52 @@ class Plugin(indigo.PluginBase):
     ########################################
     # Fans
     ########################################
+
     def actionControlSpeedControl(self, action, dev):
         self.logger.debug(f"{dev.name}: actionControlSpeedControl: action = {action}")
         if dev.deviceTypeId != "leapFan":
             self.logger.warning(f"{dev.name}: actionControlSpeedControl: not a leapFan device")
             return
 
-        if action.speedControlAction == indigo.kSpeedControlAction.SetSpeedIndex:
-            self.logger.debug(f"{dev.name}: SetSpeedIndex to {action.actionValue}")
-            self.set_fan_speed(dev, action.actionValue)
+        bridge = self.leap_bridges.get(dev.pluginProps["bridge"], None)
+        if not bridge:
+            self.logger.warning(f"{dev.name}: actionControlSpeedControl: bridge not found")
+            return
+
+        if action.speedControlAction == indigo.kSpeedControlAction.TurnOn:
+            last_speed = dev.pluginProps.get("last_speed", "Medium")
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], last_speed))
+
+        elif action.speedControlAction == indigo.kSpeedControlAction.TurnOff:
+            newProps = dev.pluginProps
+            newProps['last_speed'] = dev.states['fan_speed']    # save the last speed
+            dev.replacePluginPropsOnServer(newProps)
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Off"))
+
+        elif action.speedControlAction == indigo.kSpeedControlAction.Toggle:
+            if dev.onState:
+                newProps = dev.pluginProps
+                newProps['last_speed'] = dev.states['fan_speed']    # save the last speed
+                dev.replacePluginPropsOnServer(newProps)
+                self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Off"))
+            else:
+                last_speed = dev.pluginProps.get("last_speed", "Medium")
+                self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], last_speed))
+
+        elif action.speedControlAction == indigo.kSpeedControlAction.SetSpeedIndex:
+            speed = _FAN_SPEED_MAP.get(action.actionValue, "Medium")
+            self.logger.debug(f"{dev.name}: SetSpeedIndex to {action.actionValue}, speed = {speed}")
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], speed))
 
         elif action.speedControlAction == indigo.kSpeedControlAction.IncreaseSpeedIndex:
-            self.logger.debug(f"{dev.name}: IncreaseSpeedIndex by {action.actionValue}")
-            new_speed_index = min(dev.speedIndex + action.actionValue, 3)
-            self.set_fan_speed(dev, new_speed_index)
+            speed = _FAN_SPEED_MAP.get(min(dev.speedIndex + action.actionValue, 3))
+            self.logger.debug(f"{dev.name}: IncreaseSpeedIndex by {action.actionValue}, speed = {speed}")
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], speed))
 
         elif action.speedControlAction == indigo.kSpeedControlAction.DecreaseSpeedIndex:
-            self.logger.debug(f"{dev.name}: DecreaseSpeedIndex by {action.actionValue}")
-            new_speed_index = max(dev.speedIndex - action.actionValue, 0)
-            self.set_fan_speed(dev, new_speed_index)
-
-    def set_fan_speed(self, dev, speed_index):
-        self.logger.debug(f"{dev.name}: set_fan peed_index = {speed_index}")
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
-
-        if speed_index == 0:
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Off"))
-        elif speed_index == 1:
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Low"))
-        elif speed_index == 2:
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Medium"))
-        elif speed_index == 3:
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "High"))
-        else:
-            self.logger.error(f"{dev.name}: Invalid speedIndex = {speed_index}")
+            speed = _FAN_SPEED_MAP.get(max(dev.speedIndex - action.actionValue, 0))
+            self.logger.debug(f"{dev.name}: DecreaseSpeedIndex by {action.actionValue}, speed = {speed}")
+            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], speed))
 
     ########################################
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
@@ -630,7 +649,7 @@ class Plugin(indigo.PluginBase):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         fan_speed = pluginAction.props["fan_speed"]
-        self.logger.debug(f"{bridge_dev.name}: Setting fan speed: {fan_speed}")
+        self.logger.debug(f"{dev.name}: Setting fan speed: {fan_speed}")
         self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], fan_speed))
 
     ########################################
