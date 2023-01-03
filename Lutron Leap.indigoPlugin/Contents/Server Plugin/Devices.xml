@@ -327,4 +327,35 @@
             </State>
         </States>
     </Device>
+    <Device id="occupancy_group" type="sensor">
+        <Name>Occupancy Group</Name>
+         <States>
+            <State id="occupancy_group_id" defaultValue="">
+                <ValueType>String</ValueType>
+	            <TriggerLabel>Occupancy Group ID</TriggerLabel>
+	            <ControlPageLabel>Occupancy Group ID</ControlPageLabel>
+            </State>
+            <State id="sensors" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Sensor List</TriggerLabel>
+                <ControlPageLabel>Sensor List</ControlPageLabel>
+            </State>
+            <State id="name" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Name</TriggerLabel>
+                <ControlPageLabel>Name</ControlPageLabel>
+            </State>
+            <State id="device_name" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Device Name</TriggerLabel>
+                <ControlPageLabel>Device Name</ControlPageLabel>
+            </State>
+           <State id="area" defaultValue="">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Area</TriggerLabel>
+                <ControlPageLabel>Area</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>status</UiDisplayStateId>
+    </Device>
 </Devices>
