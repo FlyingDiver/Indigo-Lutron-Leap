@@ -1,27 +1,5 @@
 <?xml version="1.0"?>
 <Events>
-	<Event id="occupancy_event">
-        <Name>Occupancy Event</Name>
- 		<ConfigUI>
-            <Field type="menu" id="event_type" defaultValue="Occupied">
-                <Label>Event:</Label>
-                <List>
-                    <Option value="Occupied">Occupied</Option>
-                    <Option value="Unoccupied">Unoccupied</Option>
-                </List>
-            </Field>
-            <Field id="bridge" type="menu">
-                <Label>Bridge/Hub:</Label>
-                <List class="self" method="get_bridge_list" dynamicReload="true"/>
-                 <CallbackMethod>menuChanged</CallbackMethod>
-            </Field>
-            <Field id="occupancy_group" type="menu">
-                <Label>Group:</Label>
-                <List class="self" filter="" method="get_occupancy_group_list"  dynamicReload="true"/>
-                 <CallbackMethod>menuChanged</CallbackMethod>
-           </Field>
- 		</ConfigUI>
-	</Event>
 	<Event id="buttonEvent">
         <Name>Button Event</Name>
  		<ConfigUI>
