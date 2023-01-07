@@ -327,7 +327,7 @@
             </State>
         </States>
     </Device>
-    <Device id="occupancy_group" type="sensor">
+    <Device id="occupancy_group" type="sensor" allowUserCreation="false">
         <Name>Occupancy Group</Name>
          <States>
             <State id="occupancy_group_id" defaultValue="">

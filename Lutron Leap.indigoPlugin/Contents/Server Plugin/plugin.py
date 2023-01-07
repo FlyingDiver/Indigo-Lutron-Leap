@@ -201,6 +201,20 @@ class Plugin(indigo.PluginBase):
         indigo_bridge_dev.updateStateOnServer('status', "Connected")
         self.logger.debug(f"{indigo_bridge_dev.name}: Bridge Connected")
 
+        bridge_data = bridge.get_device_by_id('1')
+        self.logger.debug(f"{indigo_bridge_dev.name}: Bridge Data: {bridge_data}")
+
+        update_list = [
+            {'key': "model", 'value': bridge_data['model']},
+            {'key': "name", 'value': bridge_data['name']},
+            {'key': "dev_type", 'value': bridge_data['type']},
+            {'key': "serial", 'value': bridge_data['serial']},
+        ]
+        try:
+            indigo_bridge_dev.updateStatesOnServer(update_list)
+        except Exception as e:
+            self.logger.error(f"{indigo_bridge_dev.name}: failed to update states: {e}")
+
         # Button, Scene, and Area lists are populated here, since there are no Indigo devices to start.
 
         self.leap_buttons[indigo_bridge_dev.id] = {}
