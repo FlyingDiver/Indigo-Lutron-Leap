@@ -53,11 +53,16 @@ class Plugin(indigo.PluginBase):
         self.async_thread = None
 
         self.found_bridges = {}  # zeroconf discovered bridges
-        self.bridge_data = {}  # all devices from all bridges
 
         self.leap_bridges = {}  # devices with matching Indigo devices
         self.leap_devices = {}
+        self.leap_buttons = {}
+        self.leap_scenes = {}
+        self.leap_areas = {}
+
         self.linked_device_list = {}
+
+        self.bridge_connected_events = {}
 
         self.lastKeyTime = time.time()
         self.lastKeyAddress = ""
@@ -133,7 +138,7 @@ class Plugin(indigo.PluginBase):
         asyncio.set_event_loop(self.event_loop)
         self.event_loop.run_until_complete(self.async_main())
         self.event_loop.close()
-        self.logger.debug("run_async_thread ending")
+        self.logger.debug("run_async_thread exiting")
 
     async def async_main(self):
         self.logger.debug("async_main starting")
@@ -144,6 +149,7 @@ class Plugin(indigo.PluginBase):
             if self.stopThread:
                 self.logger.debug("async_main: stopping")
                 break
+        self.logger.debug("async_main: exiting")
 
     async def lap_pair(self, deviceID, address: str):
         """
@@ -190,42 +196,36 @@ class Plugin(indigo.PluginBase):
 
         self.logger.debug(f"{indigo_bridge_dev.name}: Creating bridge at {indigo_bridge_dev.address}")
         bridge = Smartbridge.create_tls(indigo_bridge_dev.address, f"{path}.key", f"{path}.crt", f"{path}-CA.crt")
-
-        self.logger.debug(f"{indigo_bridge_dev.name}: Connecting Bridge")
-        await bridge.connect()
-        self.logger.debug(f"{indigo_bridge_dev.name}: Bridge Connected")
         self.leap_bridges[indigo_bridge_dev.id] = bridge
+        await bridge.connect()
         indigo_bridge_dev.updateStateOnServer('status', "Connected")
+        self.logger.debug(f"{indigo_bridge_dev.name}: Bridge Connected")
 
-        self.bridge_data[indigo_bridge_dev.id] = {'devices': {}, 'buttons': {}, 'scenes': {}, 'areas': {}, 'occupancy_groups': {}}
+        # Button, Scene, and Area lists are populated here, since there are no Indigo devices to start.
 
-        for dev in bridge.get_devices().values():
-            self.logger.debug(f"Found device: {dev['name']}")
-
-            bridge.add_subscriber(dev['device_id'], lambda leap_device_id=dev['device_id']: self.device_event(indigo_bridge_dev.id, leap_device_id))
-            self.bridge_data[indigo_bridge_dev.id]['devices'][dev['device_id']] = dev
-
+        self.leap_buttons[indigo_bridge_dev.id] = {}
         for button in bridge.get_buttons().values():
             self.logger.debug(f"{indigo_bridge_dev.name}: Found Button: {button['name']} ({button['parent_device']}) - {button['device_id']}")
-            self.bridge_data[indigo_bridge_dev.id]['buttons'][button['device_id']] = button
+            self.leap_buttons[indigo_bridge_dev.id][button['device_id']] = button
             bridge.add_button_subscriber(button['device_id'],
-                lambda event_type, button_device=button['parent_device'], button_id=button['device_id']: self.button_event(
+                                        lambda event_type, button_device=button['parent_device'], button_id=button['device_id']: self.button_event(
                                              indigo_bridge_dev.id, button_device, button_id, event_type))
 
+        self.leap_scenes[indigo_bridge_dev.id] = {}
         for scene in bridge.get_scenes().values():
-            self.bridge_data[indigo_bridge_dev.id]['scenes'][scene['scene_id']] = scene['name']
+            self.logger.debug(f"{indigo_bridge_dev.name}: Found Scene: {scene['name']} - {scene['scene_id']}")
+            self.leap_scenes[indigo_bridge_dev.id][scene['scene_id']] = scene
 
+        self.leap_areas[indigo_bridge_dev.id] = {}
         for area in bridge.areas.values():
             self.logger.debug(f"{indigo_bridge_dev.name}: Found Area: {area}")
-            self.bridge_data[indigo_bridge_dev.id]['areas'][area['id']] = area
+            self.leap_areas[indigo_bridge_dev.id][area['id']] = area
 
-        for occupancy_group in bridge.occupancy_groups.values():
-            self.logger.debug(f"{indigo_bridge_dev.name}: Found Occupancy Group: {occupancy_group}")
-            self.bridge_data[indigo_bridge_dev.id]['occupancy_groups'][occupancy_group['occupancy_group_id']] = occupancy_group
-            bridge.add_occupancy_subscriber(occupancy_group['occupancy_group_id'],
-                lambda group_id=occupancy_group['occupancy_group_id']: self.occupancy_event(indigo_bridge_dev.id, group_id))
+        # Devices and Groups will be done when the devices start up.
+        self.logger.debug(f"{indigo_bridge_dev.name}: Notifying devices of connection")
+        self.bridge_connected_events[indigo_bridge_dev.id].set()
 
-    def update_dev_states(self, dev, data):
+    def update_device_states(self, device, data):
         update_list = [
             {'key': "area", 'value': data['area']},
             {'key': "button_groups", 'value': data['button_groups']},
@@ -242,9 +242,9 @@ class Plugin(indigo.PluginBase):
             {'key': "zone", 'value': data['zone']},
         ]
         try:
-            dev.updateStatesOnServer(update_list)
+            device.updateStatesOnServer(update_list)
         except Exception as e:
-            self.logger.error(f"{dev.name}: failed to update states: {e}")
+            self.logger.error(f"{device.name}: failed to update states: {e}")
 
     ##############################################################################################
     # Event Handlers
@@ -253,64 +253,62 @@ class Plugin(indigo.PluginBase):
     def device_event(self, bridge_id, device_id):
         self.logger.debug(f"device_event: bridge_id = {bridge_id}, device_id = {device_id}")
 
-        bridge = self.leap_bridges[bridge_id]
-        data = bridge.get_device_by_id(device_id)
-        self.logger.debug(f"device_event: data = {data}")
-        self.bridge_data[bridge_id]['devices'][data['device_id']] = data
+        device = indigo.devices[self.leap_devices[f"{bridge_id}:{device_id}"]]
+        leap_data = self.leap_bridges[bridge_id].get_device_by_id(device_id)
+        self.logger.debug(f"{device.name}: device_event: leap_data = {leap_data}")
+        self.update_device_states(device, leap_data)
 
-        dev = indigo.devices[self.leap_devices[f"{bridge_id}:{device_id}"]]
-        self.update_dev_states(dev, data)
-
-        if dev.deviceTypeId == DEV_DIMMER:
-            level = float(data['current_state'])
+        if device.deviceTypeId == DEV_DIMMER:
+            level = float(leap_data['current_state'])
             if int(level) == 0:
-                dev.updateStateOnServer("onOffState", False)
+                device.updateStateOnServer("onOffState", False)
             else:
-                dev.updateStateOnServer("brightnessLevel", int(level))
-            self.logger.debug(f"device_event: Dimmer {dev.name} level set to {level}%")
+                device.updateStateOnServer("brightnessLevel", int(level))
+            self.logger.debug(f"{device.name}: Dimmer set to {level}%")
 
-        elif dev.deviceTypeId == DEV_SWITCH:
-            dev.updateStateOnServer("onOffState", data['current_state'])
-            self.logger.debug(f"device_event: Switch {dev.name} state set to {data['current_state']}")
+        elif device.deviceTypeId == DEV_SWITCH:
+            device.updateStateOnServer("onOffState", leap_data['current_state'])
+            self.logger.debug(f"{device.name}: Switch set to {leap_data['current_state']}")
 
-        elif dev.deviceTypeId == DEV_FAN:
-            fan_speed = data['fan_speed']
-            self.logger.debug(f"{dev.name}: Fan speed is now {fan_speed}")
+        elif device.deviceTypeId == DEV_FAN:
+            fan_speed = leap_data['fan_speed']
             if fan_speed == "Off":
-                dev.updateStateOnServer("speedIndex", 0, uiValue="Off")
+                device.updateStateOnServer("speedIndex", 0, uiValue="Off")
             elif fan_speed == "Low":
-                dev.updateStateOnServer("speedIndex", 1, uiValue="Low")
+                device.updateStateOnServer("speedIndex", 1, uiValue="Low")
             elif fan_speed == "Medium":
-                dev.updateStateOnServer("speedIndex", 2, uiValue="Medium")
+                device.updateStateOnServer("speedIndex", 2, uiValue="Medium")
             elif fan_speed == "MediumHigh":
-                dev.updateStateOnServer("speedIndex", 2, uiValue="MediumHigh")      # MediumHigh is treated as Medium
+                device.updateStateOnServer("speedIndex", 2, uiValue="MediumHigh")      # MediumHigh is treated as Medium
             elif fan_speed == "High":
-                dev.updateStateOnServer("speedIndex", 3, uiValue="High")
+                device.updateStateOnServer("speedIndex", 3, uiValue="High")
+            self.logger.debug(f"{device.name}: Fan speed is now {fan_speed}")
 
-        elif dev.deviceTypeId == DEV_SHADE:
-            level = float(data['current_state'])
+        elif device.deviceTypeId == DEV_SHADE:
+            level = float(leap_data['current_state'])
             if int(level) == 0:
-                dev.updateStateOnServer("onOffState", False)
+                device.updateStateOnServer("onOffState", False)
             else:
-                dev.updateStateOnServer("brightnessLevel", int(level))
-            self.logger.debug(f"device_event: Shade {dev.name} set to {level}%")
+                device.updateStateOnServer("brightnessLevel", int(level))
+            self.logger.debug(f"{device.name}: Shade set to {level}%")
 
         else:
-            self.logger.debug(f"device_event: Unknown device type: {dev.deviceTypeId}")
+            self.logger.debug(f"{device.name}: device_event Unknown device type: {device.deviceTypeId}")
 
     def occupancy_event(self, bridge_id, group_id):
         self.logger.debug(f"occupancy_event: bridge_id = {bridge_id}, group_id = {group_id}")
-        data = self.leap_bridges[bridge_id].occupancy_groups[group_id]
-        self.logger.debug(f"occupancy_event: data = {data}")
-        self.bridge_data[bridge_id]['occupancy_groups'][data['occupancy_group_id']] = data
 
         dev = indigo.devices[self.leap_devices[f"{bridge_id}:GROUP.{group_id}"]]   # occupancy group device
+        data = self.leap_bridges[bridge_id].occupancy_groups[group_id]
+        self.logger.debug(f"{dev.name}: occupancy_event data = {data}")
         dev.updateStateOnServer("onOffState",(data['status'] == "Occupied"))
+        self.logger.debug(f"{dev.name}: Group set to {data['status']}")
+
         if data['status'] == "Occupied":
             dev.updateStateImageOnServer(indigo.kStateImageSel.MotionSensorTripped)
         else:
             dev.updateStateImageOnServer(indigo.kStateImageSel.MotionSensor)
-        self.logger.debug(f"occupancy_event: Group {dev.name} set to {data['status']}")
+
         update_list = [
             {'key': "area", 'value': data['area']},
             {'key': "occupancy_group_id", 'value': data['occupancy_group_id']},
@@ -396,12 +394,6 @@ class Plugin(indigo.PluginBase):
     # Device Methods
     ##################
 
-    def getDeviceConfigUiValues(self, pluginProps, typeId, devId):
-        self.logger.threaddebug(f"getDeviceConfigUiValues, typeId = {typeId}, devId = {devId}, pluginProps = {pluginProps}")
-        valuesDict = indigo.Dict(pluginProps)
-        errorsDict = indigo.Dict()
-        return valuesDict, errorsDict
-
     def validateDeviceConfigUi(self, valuesDict, typeId, devId):
         self.logger.debug(f"validateDeviceConfigUi, typeId = {typeId}, devId = {devId}, valuesDict = {valuesDict}")
 
@@ -415,10 +407,14 @@ class Plugin(indigo.PluginBase):
 
         if device.deviceTypeId == 'leapBridge':
             self.leap_bridges[device.id] = None  # create a placeholder for the bridge object, created asynchronously
+            self.bridge_connected_events[device.id] = asyncio.Event()  # create an event to wait for the bridge to connect
             if device.pluginProps['paired'] == 'true':
                 self.event_loop.create_task(self.bridge_connect(device))
+            else:
+                self.logger.warning(f"{device.name}: Not paired, skipping connect")
         else:
             self.leap_devices[device.address] = device.id
+            self.event_loop.create_task(self.async_start_device(device))
 
         device.stateListOrDisplayStateIdChanged()
 
@@ -427,19 +423,51 @@ class Plugin(indigo.PluginBase):
         if device.deviceTypeId == 'leapBridge':
             del self.leap_bridges[device.id]
 
-    def start_devices(self):
-        self.logger.debug("start_devices")
-        self.logger.debug(f"self.leap_bridges = {self.leap_bridges}")
-        for device_id in self.leap_devices.values():
-            self.logger.debug(f"start_devices: Working on device_id = {device_id}")
-            device = indigo.devices[device_id]
-            self.logger.debug(f"start_devices: props = {device.pluginProps}")
-            bridge = self.leap_bridges[device.pluginProps['bridge']]
-            self.logger.debug(f"start_devices: bridge = {bridge}")
-            if bridge is not None:
-                self.logger.debug(f"start_devices: Starting device {device.name}")
-                data = bridge.get_device_by_id(device.pluginProps['device'])
-                self.logger.debug(f"start_devices: data = {data}")
+    async def async_start_device(self, device):
+        while not self.bridge_connected_events.get(int(device.pluginProps['bridge']), None):
+            await asyncio.sleep(1)
+        bridge_id = int(device.pluginProps['bridge'])
+        await self.bridge_connected_events[bridge_id].wait()
+        bridge = self.leap_bridges[bridge_id]
+
+        if device.deviceTypeId == 'occupancy_group':
+            occupancy_group_id = device.pluginProps['device']
+            leap_data = bridge.occupancy_groups[occupancy_group_id]
+            self.logger.debug(f"{device.name}: async_start_device leap_data = {leap_data}")
+
+            self.logger.debug(f"{device.name}: async_start_device, subscribing to occupancy group events")
+            bridge.add_occupancy_subscriber(occupancy_group_id, lambda group_id=occupancy_group_id: self.occupancy_event(bridge_id, group_id))
+
+            self.logger.debug(f"{device.name}: async_start_device, setting device states")
+            device.updateStateOnServer("onOffState",(leap_data['status'] == "Occupied"))
+            self.logger.debug(f"{device.name}: Group set to {leap_data['status']}")
+
+            if leap_data['status'] == "Occupied":
+                device.updateStateImageOnServer(indigo.kStateImageSel.MotionSensorTripped)
+            else:
+                device.updateStateImageOnServer(indigo.kStateImageSel.MotionSensor)
+
+            update_list = [
+                {'key': "area", 'value': leap_data['area']},
+                {'key': "occupancy_group_id", 'value': leap_data['occupancy_group_id']},
+                {'key': "sensors", 'value': json.dumps(leap_data['sensors'])},
+                {'key': "name", 'value': leap_data['name']},
+                {'key': "device_name", 'value': leap_data['device_name']},
+            ]
+            try:
+                device.updateStatesOnServer(update_list)
+            except Exception as e:
+                self.logger.error(f"{dev.name}: failed to update states: {e}")
+        else:
+            leap_device_id = device.pluginProps['device']
+            leap_data = bridge.get_device_by_id(leap_device_id)
+            self.logger.debug(f"{device.name}: async_start_device leap_data = {leap_data}")
+
+            self.logger.debug(f"{device.name}: async_start_device, subscribing to device events")
+            bridge.add_subscriber(leap_device_id, lambda device_id=leap_device_id: self.device_event(bridge_id, device_id))
+
+            self.logger.debug(f"{device.name}: async_start_device, setting device states")
+            self.update_device_states(device, leap_data)
 
     ########################################
     # Trigger (Event) handling
@@ -473,7 +501,7 @@ class Plugin(indigo.PluginBase):
 
     def get_scene_list(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"get_scene_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
-        scenes = [(k, self.bridge_data[targetId]['scenes'][k]) for k in self.bridge_data[targetId]['scenes']]
+        scenes = [(k, v['name']) for k, v in self.leap_scenes[targetId].items()]
         self.logger.threaddebug(f"get_scene_list: scenes = {scenes}")
         return scenes
 
@@ -482,26 +510,12 @@ class Plugin(indigo.PluginBase):
         bridge_id = valuesDict.get('bridge', targetId)
         buttons = []
         if bridge_id:
-            self.logger.threaddebug(f"get_button_list: bridge_info = {bridge_id}, {self.bridge_data}")
-            for button in self.bridge_data[int(bridge_id)]['buttons'].values():
+            for button in self.leap_buttons[int(bridge_id)].values():
                 address = f"{bridge_id}:{button['device_id']}"
                 name = f"{button['name']} - {button['device_id']}"
                 buttons.append((address, name))
         self.logger.threaddebug(f"get_button_list: buttons = {buttons}")
         return buttons
-
-    def get_occupancy_group_list(self, filter="", valuesDict=None, typeId="", targetId=0):
-        self.logger.threaddebug(f"get_occupancy_group_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
-        bridge_id = valuesDict.get('bridge', targetId)
-        occupancy_groups = []
-        if bridge_id:
-            self.logger.threaddebug(f"get_occupancy_group_list: bridge_info = {bridge_id}, {self.bridge_data[int(bridge_id)]['occupancy_groups']}")
-            for group in self.bridge_data[int(bridge_id)]['occupancy_groups'].values():
-                address = f"{bridge_id}:{group['occupancy_group_id']}"
-                name = f"{group['name']} - {group['occupancy_group_id']}"
-                occupancy_groups.append((address, name))
-        self.logger.threaddebug(f"get_occupancy_group_list: occupancy_groups = {occupancy_groups}")
-        return occupancy_groups
 
     def linkable_devices(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"linkable_devices, typeId = {typeId}, targetId = {targetId}, valuesDict = {valuesDict}")
@@ -656,6 +670,21 @@ class Plugin(indigo.PluginBase):
         self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], fan_speed))
 
     ########################################
+
+    def menu_log_bridge_info(self):
+        for bridge_dev_id, bridge in self.leap_bridges.items():
+            bridge_dev = indigo.devices[bridge_dev_id]
+            self.logger.info(f"Devices:\n{json.dumps(bridge.get_devices(), sort_keys=True, indent=4)}")
+            self.logger.info(f"Buttons:\n{json.dumps(bridge.get_buttons(), sort_keys=True, indent=4)}")
+            self.logger.info(f"Scenes:\n{json.dumps(bridge.get_scenes(), sort_keys=True, indent=4)}")
+            self.logger.info(f"Areas:\n{json.dumps(bridge.areas, sort_keys=True, indent=4)}")
+            self.logger.info(f"Groups:\n{json.dumps(bridge.occupancy_groups, sort_keys=True, indent=4)}")
+
+    def menu_create_devices(self, valuesDict, typeId):
+        self.event_loop.create_task(self.create_bridge_devices(valuesDict))
+        return True
+
+    ########################################
     # Methods to handle the Manage Linked Devices dialog
     ########################################
 
@@ -709,16 +738,6 @@ class Plugin(indigo.PluginBase):
 
     ########################################
 
-    def menuDumpAll(self):
-        self.logger.info(f"Bridge Data:\n{json.dumps(self.bridge_data, sort_keys=True, indent=4)}")
-        return True
-
-    def createDevicesMenu(self, valuesDict, typeId):
-        self.event_loop.create_task(self.create_bridge_devices(valuesDict))
-        return True
-
-    ########################################
-
     async def create_bridge_devices(self, valuesDict):
 
         group_by = valuesDict["group_by"]
@@ -726,37 +745,30 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"Creating Devices, Grouping = {group_by}")
 
         bridge_id = int(valuesDict["bridge"])
-        if bridge_id not in self.bridge_data:
-            self.logger.error(f"Bridge {bridge_id} not found, bridge_data =\n{self.bridge_data}")
-            return
+        bridge = self.leap_bridges[bridge_id]
 
-        bridgeData = self.bridge_data[bridge_id]
-
-        for dev in bridgeData["occupancy_groups"].values():
-            self.logger.info(f"Occupancy Group '{dev['name']}' ({dev['occupancy_group_id']}), Area = {dev['area']}")
-
-            try:
-                areaName = bridgeData['areas'][dev['area']]['name']
-            except KeyError:
-                areaName = "Unknown"
-
-            address = f"{bridge_id}:GROUP.{dev['occupancy_group_id']}"
-            name = f"{dev['name']} ({dev['occupancy_group_id']})"
-            props = {
-                "room": areaName,
-                "bridge": bridge_id,
-                "device": dev['occupancy_group_id'],
-            }
-            self.create_leap_device(DEV_GROUP, name, address, props, areaName, group_by, rename_devices)
-
-        for dev in bridgeData["devices"].values():
-            self.logger.info(f"Device '{dev['name']}' ({dev['device_id']}), Area = {dev['area']}")
+        for dev in bridge.get_devices().values():
 
             if dev['type'] in ['SmartBridge', 'SmartBridge Pro']:
-                continue    # skip the bridge itself
+                self.logger.debug(f"Skipping Bridge device type {dev['type']}")
+                continue
+            elif dev['type'] in LEAP_DEVICE_TYPES['sensor']:
+                self.logger.debug(f"Skipping Sensor device type {dev['type']}")
+                continue
+            elif dev['type'] in LEAP_DEVICE_TYPES['light']:
+                dev_type = DEV_DIMMER
+            elif dev['type'] in LEAP_DEVICE_TYPES['switch']:
+                dev_type = DEV_SWITCH
+            elif dev['type'] in LEAP_DEVICE_TYPES['fan']:
+                dev_type = DEV_FAN
+            elif dev['type'] in LEAP_DEVICE_TYPES['cover']:
+                dev_type = DEV_SHADE
+            else:
+                self.logger.warning(f"Unknown device type {dev['type']}")
+                continue
 
             try:
-                areaName = bridgeData['areas'][dev['area']]['name']
+                areaName = self.leap_areas[dev['area']]['name']
             except KeyError:
                 areaName = "Unknown"
 
@@ -767,27 +779,27 @@ class Plugin(indigo.PluginBase):
                 "bridge": bridge_id,
                 "device": dev['device_id'],
             }
-            if dev['type'] in LEAP_DEVICE_TYPES['light']:
-                dev_type = DEV_DIMMER
 
-            elif dev['type'] in LEAP_DEVICE_TYPES['switch']:
-                dev_type = DEV_SWITCH
-
-            elif dev['type'] in LEAP_DEVICE_TYPES['fan']:
-                dev_type = DEV_FAN
-
-            elif dev['type'] in LEAP_DEVICE_TYPES['cover']:
-                dev_type = DEV_SHADE
-
-            elif dev['type'] in LEAP_DEVICE_TYPES['sensor']:
-                self.logger.debug(f"Skipping sensor device type {dev['type']}")
-                continue
-
-            else:
-                self.logger.warning(f"Unknown device type {dev['type']}")
-                continue
-
+            self.logger.info(f"Creating Device '{dev['name']}' ({dev['device_id']}), Area = {dev['area']}")
             self.create_leap_device(dev_type, name, address, props, areaName, group_by, rename_devices)
+
+        for group in bridge.occupancy_groups.values():
+
+            try:
+                areaName = self.leap_areas[group['area']]['name']
+            except KeyError:
+                areaName = "Unknown"
+
+            address = f"{bridge_id}:GROUP.{group['occupancy_group_id']}"
+            name = f"{group['name']} ({group['occupancy_group_id']})"
+            props = {
+                "room": areaName,
+                "bridge": bridge_id,
+                "device": group['occupancy_group_id'],
+            }
+
+            self.logger.info(f"Creating Occupancy Group '{group['name']}' ({group['occupancy_group_id']}), Area = {group['area']}")
+            self.create_leap_device(DEV_GROUP, name, address, props, areaName, group_by, rename_devices)
 
         self.logger.info("Creating Devices done.")
         return

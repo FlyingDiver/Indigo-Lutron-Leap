@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <MenuItems>
-    <MenuItem id="menu3">
+    <MenuItem id="menu1">
         <Name>Write Bridge Data to Log</Name>
-        <CallbackMethod>menuDumpAll</CallbackMethod>
+        <CallbackMethod>menu_log_bridge_info</CallbackMethod>
     </MenuItem>
-    <MenuItem id="createDevices">
+    <MenuItem id="menu2">
         <Name>Create Devices from Bridge</Name>
-        <CallbackMethod>createDevicesMenu</CallbackMethod>
+        <CallbackMethod>menu_create_devices</CallbackMethod>
         <ButtonTitle>Create</ButtonTitle>
         <ConfigUI>
 			<Field id="warning_note" type="label">
@@ -36,7 +36,7 @@
 			</Field>       </ConfigUI>
     </MenuItem>
     <MenuItem id="titleSeparator1" type="separator" />
-    <MenuItem id="manageLinkedDevices">
+    <MenuItem id="menu3">
         <Name>Manage Linked Devices...</Name>
         <ButtonTitle>Done</ButtonTitle>
         <ConfigUI>

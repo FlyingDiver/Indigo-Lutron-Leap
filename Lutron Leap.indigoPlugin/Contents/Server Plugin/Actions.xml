@@ -6,7 +6,7 @@
 		<ConfigUI>
             <Field id="scene_id" type="menu">
                <Label>Scene:</Label>
-                <List class="self" method="get_scene_list" dynamicReload="true"/>
+                <List class="self" filter="" method="get_scene_list" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
             </Field>
 		</ConfigUI>
