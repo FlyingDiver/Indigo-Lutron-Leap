@@ -315,7 +315,8 @@ class Plugin(indigo.PluginBase):
         dev = indigo.devices[self.leap_devices[f"{bridge_id}:GROUP.{group_id}"]]   # occupancy group device
         data = self.leap_bridges[bridge_id].occupancy_groups[group_id]
         self.logger.debug(f"{dev.name}: occupancy_event data = {data}")
-        dev.updateStateOnServer("onOffState",(data['status'] == "Occupied"))
+        occupied = data['status'] == "Occupied"
+        dev.updateStateOnServer("onOffState", occupied, uiValue="Occupied" if occupied else "Unoccupied")
         self.logger.debug(f"{dev.name}: Group set to {data['status']}")
 
         if data['status'] == "Occupied":
@@ -453,7 +454,8 @@ class Plugin(indigo.PluginBase):
             bridge.add_occupancy_subscriber(occupancy_group_id, lambda group_id=occupancy_group_id: self.occupancy_event(bridge_id, group_id))
 
             self.logger.debug(f"{device.name}: async_start_device, setting device states")
-            device.updateStateOnServer("onOffState",(leap_data['status'] == "Occupied"))
+            occupied = leap_data['status'] == "Occupied"
+            device.updateStateOnServer("onOffState", occupied, uiValue="Occupied" if occupied else "Unoccupied")
             self.logger.debug(f"{device.name}: Group set to {leap_data['status']}")
 
             if leap_data['status'] == "Occupied":

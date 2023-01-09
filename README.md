@@ -17,3 +17,17 @@ Supported Device Types:
 * Fans
 * Occupancy/Vacancy Sensors
 * Pico Remotes
+
+As of the initial release only the following devices have been tested:
+
+* Lutron Caséta Smart Hub
+* Lutron Caséta Smart Bridge PRO
+
+* Caseta plug-in dimmers
+* Pico Remotes
+* Caseta Fan Controllers
+
+Other devices that are supported by the LEAP protocol should work, but have not been tested.
+
+For other Lutron systems that use the original Lutron integration protocol, especially RadioRA 2, 
+see the original Lutron plugin at https://www.indigodomo.com/pluginstore/84/
