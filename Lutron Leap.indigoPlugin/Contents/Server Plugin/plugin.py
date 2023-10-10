@@ -8,14 +8,18 @@ import time
 from datetime import timedelta
 import threading
 import asyncio
-from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
 from device_types import LEAP_DEVICE_TYPES
 
 try:
     from pylutron_caseta.pairing import async_pair
     from pylutron_caseta.smartbridge import Smartbridge
-except ImportError:
-    raise ImportError("'Required Python libraries missing.  Run 'pip3 install pylutron_caseta' in Terminal window, then reload plugin.")
+except ImportError as err:
+    raise ImportError(f"'Required Python libraries missing:{err}  Run 'pip3 install pylutron_caseta' in Terminal window, then reload plugin.")
+
+try:
+    from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
+except ImportError as err:
+    raise ImportError(f"'Required Python libraries missing:{err}  Run 'pip3 install zeroconf' in Terminal window, then reload plugin.")
 
 # Indigo Custom Device Types
 DEV_DIMMER = "leapDimmer"
