@@ -766,10 +766,11 @@ class Plugin(indigo.PluginBase):
 
         bridge_id = int(valuesDict["bridge"])
         bridge = self.leap_bridges[bridge_id]
+        self.logger.debug(f"Creating {len(bridge.get_devices())} devices")
 
         for dev in bridge.get_devices().values():
 
-            if dev['type'] in ['SmartBridge', 'SmartBridge Pro']:
+            if dev['type'] in ['SmartBridge', 'SmartBridge Pro', 'RadioRa3Processor']:
                 self.logger.debug(f"Skipping Bridge device type {dev['type']}")
                 continue
             elif dev['type'] in LEAP_DEVICE_TYPES['sensor']:
@@ -787,9 +788,16 @@ class Plugin(indigo.PluginBase):
                 self.logger.warning(f"Unknown device type {dev['type']}")
                 continue
 
-            try:
-                areaName = self.leap_areas[dev['area']]['name']
-            except KeyError:
+            # Need to fix this to handle RRa3 zone system
+            if dev.get('area', None):
+                try:
+                    areaName = self.leap_areas[dev['area']]['name']
+                except Exception as e:
+                    self.logger.debug(f"Area Name exception: {e}")
+                    areaName = "Unknown"
+            elif dev.get('zone', None):
+                areaName = "Unknown"
+            else:
                 areaName = "Unknown"
 
             address = f"{bridge_id}:{dev['device_id']}"
@@ -800,7 +808,7 @@ class Plugin(indigo.PluginBase):
                 "device": dev['device_id'],
             }
 
-            self.logger.info(f"Creating Device '{dev['name']}' ({dev['device_id']}), Area = {dev['area']}")
+            self.logger.info(f"Creating Device '{name}' ({address}), Area = {areaName}")
             self.create_leap_device(dev_type, name, address, props, areaName, group_by, rename_devices)
 
         for group in bridge.occupancy_groups.values():
@@ -818,7 +826,7 @@ class Plugin(indigo.PluginBase):
                 "device": group['occupancy_group_id'],
             }
 
-            self.logger.info(f"Creating Occupancy Group '{group['name']}' ({group['occupancy_group_id']}), Area = {group['area']}")
+            self.logger.info(f"Creating Occupancy Group '{name}' ({address}), Area = {areaName}")
             self.create_leap_device(DEV_GROUP, name, address, props, areaName, group_by, rename_devices)
 
         self.logger.info("Creating Devices done.")
