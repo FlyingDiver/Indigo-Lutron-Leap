@@ -9,6 +9,14 @@ Supports Bridges:
 * RadioRA 3 All-in-One Processor (RR-PROC3)
 * Homeworks QSX Processor (HQP7)
 
+There are some systems that support both the LEAP and the original protocol. If you have one of these,
+you should use the original plugin. The LEAP protocol is not as complete as the original protocol at this time.
+
+However, if you need both because you have a mix of old and new hardware, both plugins can
+be used simultaneously. The LEAP plugin will not interfere with the original plugin.  You can migrate devices 
+from the original plugin to the LEAP plugin at any time.  You could even have some devices in both plugins
+at the same time (but that's not recommended except for the migration process).
+
 Supported Device Types:
 
 * Wall and plug-in dimmers
