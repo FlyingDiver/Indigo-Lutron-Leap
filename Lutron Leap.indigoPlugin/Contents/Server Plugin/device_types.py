@@ -39,7 +39,7 @@ LEAP_DEVICE_TYPES = {
         "Shade",
         "SerenaTiltOnlyWoodBlind",
     ],
-    "sensor": [
+    "keypad": [
         "Pico1Button",
         "Pico2Button",
         "Pico2ButtonRaiseLower",
@@ -60,7 +60,10 @@ LEAP_DEVICE_TYPES = {
         "AlisseKeypad",
         "PalladiomKeypad",
         "PhantomKeypad",
+    ],
+    "sensor": [
         "RPSOccupancySensor",
         "RPSCeilingMountedOccupancySensor",
+        "RPSWallMountedOccupancySensor"
     ],
 }

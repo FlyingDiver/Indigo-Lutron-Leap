@@ -64,6 +64,9 @@ class Plugin(indigo.PluginBase):
         self.leap_scenes = {}
         self.leap_areas = {}
 
+        self.leap_known_devices = {}
+        self.leap_known_groups = {}
+
         self.linked_device_list = {}
 
         self.bridge_connected_events = {}
@@ -219,6 +222,17 @@ class Plugin(indigo.PluginBase):
         except Exception as e:
             self.logger.error(f"{indigo_bridge_dev.name}: failed to update states: {e}")
 
+        self.leap_known_devices[indigo_bridge_dev.id] = {}
+        for device in bridge.get_devices().values():
+            self.logger.debug(f"{indigo_bridge_dev.name}: Found Device: {device['name']} ({device['device_id']}) - {device['type']} ({device['model']})")
+            self.leap_known_devices[indigo_bridge_dev.id][device['device_id']] = device
+
+        self.leap_known_groups[indigo_bridge_dev.id] = {}
+        for group in bridge.occupancy_groups.values():
+            self.logger.debug(
+                f"{indigo_bridge_dev.name}: Found Group: {group['name']} - {group}")
+            self.leap_known_groups[indigo_bridge_dev.id][group['occupancy_group_id']] = group
+
         # Button, Scene, and Area lists are populated here, since there are no Indigo devices to start.
 
         self.leap_buttons[indigo_bridge_dev.id] = {}
@@ -245,19 +259,19 @@ class Plugin(indigo.PluginBase):
 
     def update_device_states(self, device, data):
         update_list = [
-            {'key': "area", 'value': data['area']},
-            {'key': "button_groups", 'value': data['button_groups']},
-            {'key': "current_state", 'value': data['current_state']},
-            {'key': "device_id", 'value': data['device_id']},
-            {'key': "device_name", 'value': data['device_name']},
-            {'key': "fan_speed", 'value': data['fan_speed']},
-            {'key': "model", 'value': data['model']},
-            {'key': "name", 'value': data['name']},
-            {'key': "occupancy_sensors", 'value': data['occupancy_sensors']},
-            {'key': "serial", 'value': data['serial']},
-            {'key': "tilt", 'value': data['tilt']},
-            {'key': "type", 'value': data['type']},
-            {'key': "zone", 'value': data['zone']},
+            {'key': "area", 'value': data.get('area')},
+            {'key': "button_groups", 'value': data.get('button_groups')},
+            {'key': "current_state", 'value': data.get('current_state')},
+            {'key': "device_id", 'value': data.get('device_id')},
+            {'key': "device_name", 'value': data.get('device_name')},
+            {'key': "fan_speed", 'value': data.get('fan_speed')},
+            {'key': "model", 'value': data.get('model')},
+            {'key': "name", 'value': data.get('name')},
+            {'key': "occupancy_sensors", 'value': data.get('occupancy_sensors')},
+            {'key': "serial", 'value': data.get('serial')},
+            {'key': "tilt", 'value': data.get('tilt')},
+            {'key': "type", 'value': data.get('type')},
+            {'key': "zone", 'value': data.get('zone')},
         ]
         try:
             device.updateStatesOnServer(update_list)
@@ -285,7 +299,7 @@ class Plugin(indigo.PluginBase):
             self.logger.debug(f"{device.name}: Dimmer set to {level}%")
 
         elif device.deviceTypeId == DEV_SWITCH:
-            device.updateStateOnServer("onOffState", leap_data['current_state'])
+            device.updateStateOnServer("onOffState", bool(leap_data['current_state']))
             self.logger.debug(f"{device.name}: Switch set to {leap_data['current_state']}")
 
         elif device.deviceTypeId == DEV_FAN:
@@ -453,11 +467,7 @@ class Plugin(indigo.PluginBase):
             occupancy_group_id = device.pluginProps['device']
             leap_data = bridge.occupancy_groups[occupancy_group_id]
             self.logger.debug(f"{device.name}: async_start_device leap_data = {leap_data}")
-
-            self.logger.debug(f"{device.name}: async_start_device, subscribing to occupancy group events")
             bridge.add_occupancy_subscriber(occupancy_group_id, lambda group_id=occupancy_group_id: self.occupancy_event(bridge_id, group_id))
-
-            self.logger.debug(f"{device.name}: async_start_device, setting device states")
             occupied = leap_data['status'] == "Occupied"
             device.updateStateOnServer("onOffState", occupied, uiValue="Occupied" if occupied else "Unoccupied")
             self.logger.debug(f"{device.name}: Group set to {leap_data['status']}")
@@ -482,11 +492,7 @@ class Plugin(indigo.PluginBase):
             leap_device_id = device.pluginProps['device']
             leap_data = bridge.get_device_by_id(leap_device_id)
             self.logger.debug(f"{device.name}: async_start_device leap_data = {leap_data}")
-
-            self.logger.debug(f"{device.name}: async_start_device, subscribing to device events")
             bridge.add_subscriber(leap_device_id, lambda device_id=leap_device_id: self.device_event(bridge_id, device_id))
-
-            self.logger.debug(f"{device.name}: async_start_device, setting device states")
             self.update_device_states(device, leap_data)
 
     ########################################
@@ -691,14 +697,16 @@ class Plugin(indigo.PluginBase):
 
     ########################################
 
-    def menu_log_bridge_info(self):
-        for bridge_dev_id, bridge in self.leap_bridges.items():
-            bridge_dev = indigo.devices[bridge_dev_id]
-            self.logger.info(f"Devices:\n{json.dumps(bridge.get_devices(), sort_keys=True, indent=4)}")
-            self.logger.info(f"Buttons:\n{json.dumps(bridge.get_buttons(), sort_keys=True, indent=4)}")
-            self.logger.info(f"Scenes:\n{json.dumps(bridge.get_scenes(), sort_keys=True, indent=4)}")
-            self.logger.info(f"Areas:\n{json.dumps(bridge.areas, sort_keys=True, indent=4)}")
-            self.logger.info(f"Groups:\n{json.dumps(bridge.occupancy_groups, sort_keys=True, indent=4)}")
+    def menu_log_bridge_info(self, valuesDict, typeId):
+        bridge_id = int(valuesDict["bridge"])
+        bridge = self.leap_bridges[bridge_id]
+        self.logger.info(f"Bridge: {indigo.devices[bridge_id].name}")
+        self.logger.info(f"Devices:\n{json.dumps(self.leap_known_devices[bridge_id], sort_keys=True, indent=4)}")
+        self.logger.info(f"Buttons:\n{json.dumps(self.leap_buttons[bridge_id], sort_keys=True, indent=4)}")
+        self.logger.info(f"Scenes:\n{json.dumps(self.leap_scenes[bridge_id], sort_keys=True, indent=4)}")
+        self.logger.info(f"Areas:\n{json.dumps(self.leap_areas[bridge_id], sort_keys=True, indent=4)}")
+        self.logger.info(f"Groups:\n{json.dumps(self.leap_known_groups[bridge_id], sort_keys=True, indent=4)}")
+        return True
 
     def menu_create_devices(self, valuesDict, typeId):
         self.event_loop.create_task(self.create_bridge_devices(valuesDict))
@@ -769,9 +777,13 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"Creating {len(bridge.get_devices())} devices")
 
         for dev in bridge.get_devices().values():
+            self.logger.debug(f"Working on device: {json.dumps(dev, sort_keys=True, indent=4)}")
 
             if dev['type'] in ['SmartBridge', 'SmartBridge Pro', 'RadioRa3Processor']:
                 self.logger.debug(f"Skipping Bridge device type {dev['type']}")
+                continue
+            elif dev['type'] in LEAP_DEVICE_TYPES['keypad']:
+                self.logger.debug(f"Skipping key device type {dev['type']}")
                 continue
             elif dev['type'] in LEAP_DEVICE_TYPES['sensor']:
                 self.logger.debug(f"Skipping Sensor device type {dev['type']}")
@@ -785,20 +797,18 @@ class Plugin(indigo.PluginBase):
             elif dev['type'] in LEAP_DEVICE_TYPES['cover']:
                 dev_type = DEV_SHADE
             else:
-                self.logger.warning(f"Unknown device type {dev['type']}")
+                self.logger.warning(f"Unknown Lutron device type {dev['type']}")
                 continue
 
-            # Need to fix this to handle RRa3 zone system
-            if dev.get('area', None):
-                try:
-                    areaName = self.leap_areas[dev['area']]['name']
-                except Exception as e:
-                    self.logger.debug(f"Area Name exception: {e}")
-                    areaName = "Unknown"
-            elif dev.get('zone', None):
-                areaName = "Unknown"
-            else:
-                areaName = "Unknown"
+            area = dev.get('area')
+            parent_device = dev.get('parent_device')
+            areaName = "Unknown"
+            if area and self.leap_areas[bridge_id][area].get('name'):
+                areaName = self.leap_areas[bridge_id][dev['area']]['name']
+            elif parent_device and (parent_device := self.leap_known_devices[bridge_id].get(parent_device)):
+                if parent_device_area := parent_device.get('area'):
+                    if parent_area := self.leap_areas[bridge_id].get(parent_device_area):
+                        areaName = parent_area.get('name')
 
             address = f"{bridge_id}:{dev['device_id']}"
             name = f"{dev['name']} ({dev['device_id']})"
@@ -814,7 +824,7 @@ class Plugin(indigo.PluginBase):
         for group in bridge.occupancy_groups.values():
 
             try:
-                areaName = self.leap_areas[group['area']]['name']
+                areaName = self.leap_areas[bridge_id][group['area']]['name']
             except KeyError:
                 areaName = "Unknown"
 

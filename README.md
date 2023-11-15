@@ -17,7 +17,7 @@ be used simultaneously. The LEAP plugin will not interfere with the original plu
 from the original plugin to the LEAP plugin at any time.  You could even have some devices in both plugins
 at the same time (but that's not recommended except for the migration process).
 
-Supported Device Types:
+Supported Devices:
 
 * Wall and plug-in dimmers
 * Wall Switches
@@ -26,19 +26,27 @@ Supported Device Types:
 * Occupancy/Vacancy Sensors
 * Pico Remotes
 
-As of the initial release only the following devices have been tested:
+As of the current release only the following devices have been tested:
 
+* RadioRa 3 All-in-One Processor (RR-PROC3)
+* RadioRa 3 Dimmers (RRST-PRO-NFB-XX, etc)
+* RadioRa 3 Keypads (RRST-W4B-XX, etc)
+* RadioRa 2 Dimmers (RRD-6ND, etc)
 * Lutron Caséta Smart Hub
 * Lutron Caséta Smart Bridge PRO
-
+* Occupancy/Vacancy Sensors
 * Caseta plug-in dimmers
 * Pico Remotes
 * Caseta Fan Controllers
 
 * Other devices that are supported by the LEAP protocol should work, but have not been tested.
 
-Note that Pico Remotes and the Occupancy sensors do not exist as Indigo devices. They can only be used as triggers 
+Note that Keypad buttons, Pico Remotes and the Occupancy sensors do not exist as Indigo devices. They can only be used as triggers 
 for action groups. These devices have no "state", so there are no devices for them.
+
+Currently the RRa3 Keypad LEDs are supported as Indigo switch devices, but cannot be controller if they are
+programmed as device or scene controls in the Lutron software.  The Lutron scene settings will override any
+changes made in Indigo.  If you want to control the LEDs from Indigo, the buttons cannot be programmed at all.
 
 Before enabling the plugin, you need to make sure the zeroconf package is installed. You can do this from the command line:
 ````
@@ -53,7 +61,9 @@ online (you can see it in the Lutron mobile app). You can enable detailed debugg
 process is doing anything.
 
 When you create the Bridge device, you'll be prompted to pair the plugin with the bridge. You need to press 
-the pairing button on the device. On the Caseta hub I'm testing with, it's a button next to the power connector. 
+the pairing button on the device. On the Caseta hub, it's a button next to the power connector.
+On the RRa3 processor, it's a very small button on the front of the device near the status LED.
+
 You should see something like this in the Indigo log:
 ````
 Lutron Leap                     Starting pairing process for Bridge Lutron-05124472.local., please press the pairing button on the Bridge.
