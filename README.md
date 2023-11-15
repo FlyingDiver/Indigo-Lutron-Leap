@@ -17,7 +17,7 @@ be used simultaneously. The LEAP plugin will not interfere with the original plu
 from the original plugin to the LEAP plugin at any time.  You could even have some devices in both plugins
 at the same time (but that's not recommended except for the migration process).
 
-Supported Device Types:
+Supported Devices:
 
 * Wall and plug-in dimmers
 * Wall Switches
@@ -26,11 +26,11 @@ Supported Device Types:
 * Occupancy/Vacancy Sensors
 * Pico Remotes
 
-As of the initial release only the following devices have been tested:
+As of the current release only the following devices have been tested:
 
 * Lutron Caséta Smart Hub
 * Lutron Caséta Smart Bridge PRO
-
+* Occupancy/Vacancy Sensors
 * Caseta plug-in dimmers
 * Pico Remotes
 * Caseta Fan Controllers

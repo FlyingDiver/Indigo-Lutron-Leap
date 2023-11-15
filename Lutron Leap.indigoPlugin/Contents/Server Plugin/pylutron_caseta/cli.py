@@ -100,7 +100,7 @@ URL = _UrlParamType()
     "--cert",
     type=click.File("w", encoding="ascii", atomic=True),
     cls=_AddressCertOption,
-    suff@_cli_mainix=".crt",
+    suffix=".crt",
     help="The path to the client certificate.",
 )
 @click.option(

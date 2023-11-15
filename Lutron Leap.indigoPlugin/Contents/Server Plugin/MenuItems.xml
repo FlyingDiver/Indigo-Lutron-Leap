@@ -3,6 +3,13 @@
     <MenuItem id="menu1">
         <Name>Write Bridge Data to Log</Name>
         <CallbackMethod>menu_log_bridge_info</CallbackMethod>
+        <ConfigUI>
+            <Field id="bridge" type="menu">
+                <Label>Bridge/Hub:</Label>
+                <List class="self" method="get_bridge_list" dynamicReload="true"/>
+                <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+        </ConfigUI>
     </MenuItem>
     <MenuItem id="menu2">
         <Name>Create Devices from Bridge</Name>
@@ -33,7 +40,8 @@
      		<Field id="separator2" type="separator" />
 			<Field id="rename_devices" type="checkbox" defaultValue="false">
 				<Label>Force rename existing devices:</Label>
-			</Field>       </ConfigUI>
+			</Field>
+        </ConfigUI>
     </MenuItem>
     <MenuItem id="titleSeparator1" type="separator" />
     <MenuItem id="menu3">
