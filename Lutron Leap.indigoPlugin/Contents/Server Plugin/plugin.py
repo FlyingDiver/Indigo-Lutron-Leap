@@ -299,8 +299,9 @@ class Plugin(indigo.PluginBase):
             self.logger.debug(f"{device.name}: Dimmer set to {level}%")
 
         elif device.deviceTypeId == DEV_SWITCH:
-            device.updateStateOnServer("onOffState", bool(leap_data['current_state']))
-            self.logger.debug(f"{device.name}: Switch set to {leap_data['current_state']}")
+            state = True if leap_data['current_state'] > 0 else False
+            device.updateStateOnServer("onOffState", state)
+            self.logger.debug(f"{device.name}: Switch set to {state}")
 
         elif device.deviceTypeId == DEV_FAN:
             fan_speed = leap_data['fan_speed']
@@ -533,13 +534,37 @@ class Plugin(indigo.PluginBase):
 
     def get_button_list(self, filter="", valuesDict=None, typeId="", targetId=0):
         self.logger.threaddebug(f"get_button_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
-        bridge_id = valuesDict.get('bridge', targetId)
+        bridge_id = int(valuesDict.get('bridge', targetId))
         buttons = []
         if bridge_id:
-            for button in self.leap_buttons[int(bridge_id)].values():
+            for button in self.leap_buttons[bridge_id].values():
                 address = f"{bridge_id}:{button['device_id']}"
-                name = f"{button['name']} - {button['device_id']}"
+
+                device_name = button.get('device_name')
+                parent_device_id = button.get('parent_device')
+                parent_device = self.leap_known_devices[bridge_id].get(parent_device_id)
+                parent_device_name = parent_device.get('device_name') if parent_device_id else None
+                parent_device_control_station_name = parent_device.get('control_station_name') if parent_device_id else None
+
+                area = button.get('area')
+                areaName = "Unknown"
+
+                if area and self.leap_areas[bridge_id][area].get('name'):
+                    areaName = self.leap_areas[bridge_id][dev['area']]['name']
+                elif parent_device_id and (parent_device_id := self.leap_known_devices[bridge_id].get(parent_device_id)):
+                    if parent_device_area := parent_device_id.get('area'):
+                        if parent_area := self.leap_areas[bridge_id].get(parent_device_area):
+                            areaName = parent_area.get('name')
+
+                name = f"{areaName}"
+                if parent_device_control_station_name:
+                    name += f" - {parent_device_control_station_name}"
+                if parent_device_name:
+                    name += f" - {parent_device_name}"
+                name += f" - {device_name} ({button['device_id']})"
+
                 buttons.append((address, name))
+            buttons.sort(key=lambda tup: tup[1])
         self.logger.threaddebug(f"get_button_list: buttons = {buttons}")
         return buttons
 
@@ -708,8 +733,8 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"Groups:\n{json.dumps(self.leap_known_groups[bridge_id], sort_keys=True, indent=4)}")
         return True
 
-    def menu_create_devices(self, valuesDict, typeId):
-        self.event_loop.create_task(self.create_bridge_devices(valuesDict))
+    def menu_create_devices_for_bridge(self, valuesDict, typeId):
+        self.event_loop.create_task(self.create_devices_for_bridge(valuesDict))
         return True
 
     ########################################
@@ -766,7 +791,7 @@ class Plugin(indigo.PluginBase):
 
     ########################################
 
-    async def create_bridge_devices(self, valuesDict):
+    async def create_devices_for_bridge(self, valuesDict):
 
         group_by = valuesDict["group_by"]
         rename_devices = bool(valuesDict["rename_devices"])
@@ -774,7 +799,6 @@ class Plugin(indigo.PluginBase):
 
         bridge_id = int(valuesDict["bridge"])
         bridge = self.leap_bridges[bridge_id]
-        self.logger.debug(f"Creating {len(bridge.get_devices())} devices")
 
         for dev in bridge.get_devices().values():
             self.logger.debug(f"Working on device: {json.dumps(dev, sort_keys=True, indent=4)}")
@@ -783,7 +807,7 @@ class Plugin(indigo.PluginBase):
                 self.logger.debug(f"Skipping Bridge device type {dev['type']}")
                 continue
             elif dev['type'] in LEAP_DEVICE_TYPES['keypad']:
-                self.logger.debug(f"Skipping key device type {dev['type']}")
+                self.logger.debug(f"Skipping keypad device type {dev['type']}")
                 continue
             elif dev['type'] in LEAP_DEVICE_TYPES['sensor']:
                 self.logger.debug(f"Skipping Sensor device type {dev['type']}")
@@ -800,18 +824,30 @@ class Plugin(indigo.PluginBase):
                 self.logger.warning(f"Unknown Lutron device type {dev['type']}")
                 continue
 
+            device_name = dev.get('device_name')
+            parent_device_id = dev.get('parent_device')
+            parent_device = self.leap_known_devices[bridge_id].get(parent_device_id)
+            parent_device_name = parent_device.get('device_name') if parent_device_id else None
+            parent_device_control_station_name = parent_device.get('control_station_name') if parent_device_id else None
+
             area = dev.get('area')
-            parent_device = dev.get('parent_device')
             areaName = "Unknown"
+
             if area and self.leap_areas[bridge_id][area].get('name'):
                 areaName = self.leap_areas[bridge_id][dev['area']]['name']
-            elif parent_device and (parent_device := self.leap_known_devices[bridge_id].get(parent_device)):
-                if parent_device_area := parent_device.get('area'):
+            elif parent_device_id and (parent_device_id := self.leap_known_devices[bridge_id].get(parent_device_id)):
+                if parent_device_area := parent_device_id.get('area'):
                     if parent_area := self.leap_areas[bridge_id].get(parent_device_area):
                         areaName = parent_area.get('name')
 
+            name = f"{areaName}"
+            if parent_device_control_station_name:
+                name += f" - {parent_device_control_station_name}"
+            if parent_device_name:
+                name += f" - {parent_device_name}"
+            name += f" - {device_name} ({dev['device_id']})"
+
             address = f"{bridge_id}:{dev['device_id']}"
-            name = f"{dev['name']} ({dev['device_id']})"
             props = {
                 "room": areaName,
                 "bridge": bridge_id,
