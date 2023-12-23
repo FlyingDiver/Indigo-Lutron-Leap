@@ -75,7 +75,7 @@ class Plugin(indigo.PluginBase):
 
         self.keypress_queue = queue.Queue()
 
-        self.lastKeyTime = 0
+        self.currentKeyTime = 0
         self.currentKeyAddress = None
         self.currentKeyTaps = 0
         self.activeKeyPress = False
@@ -393,7 +393,7 @@ class Plugin(indigo.PluginBase):
     async def buttonMultiPressCheck(self):
 
         if self.keypress_queue.empty():
-            if self.activeKeyPress and time.time() > (self.lastKeyTime + self.click_timeout):
+            if self.activeKeyPress and time.time() > (self.currentKeyTime + self.click_timeout):
                 self.logger.debug(f"buttonMultiPressCheck: Timeout reached for button = {self.currentKeyAddress}, presses = {self.currentKeyTaps}")
                 self.activeKeyPress = False
                 await self.multi_trigger_check()
@@ -406,12 +406,11 @@ class Plugin(indigo.PluginBase):
             self.activeKeyPress = True
             self.currentKeyAddress = newKeyAddress
             self.currentKeyTaps = 1
-            self.lastKeyTime = newKeyTime
+            self.currentKeyTime = newKeyTime
             return
 
         if newKeyAddress == self.currentKeyAddress:
             self.currentKeyTaps += 1
-            return
 
         else:
             # newKeyAddress != self.currentKeyAddress - different button so process the current one
@@ -421,9 +420,8 @@ class Plugin(indigo.PluginBase):
             self.activeKeyPress = True
             self.currentKeyAddress = newKeyAddress
             self.currentKeyTaps = 1
-            self.lastKeyTime = newKeyTime
-            return
-        
+            self.currentKeyTime = newKeyTime
+
     async def multi_trigger_check(self):
         for triggerID in self.triggers:
             trigger = indigo.triggers[triggerID]
