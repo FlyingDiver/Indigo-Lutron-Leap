@@ -8,6 +8,8 @@ import time
 from datetime import timedelta
 import threading
 import asyncio
+import queue
+
 from device_types import LEAP_DEVICE_TYPES
 
 try:
@@ -71,10 +73,12 @@ class Plugin(indigo.PluginBase):
 
         self.bridge_connected_events = {}
 
-        self.lastKeyTime = time.time()
-        self.lastKeyAddress = ""
-        self.lastKeyTaps = 0
-        self.newKeyPress = False
+        self.keypress_queue = queue.Queue()
+
+        self.lastKeyTime = 0
+        self.currentKeyAddress = None
+        self.currentKeyTaps = 0
+        self.activeKeyPress = False
         self.click_timeout = float(self.pluginPrefs.get("click_timeout", "0.5"))
 
     def ssl_file_path(self, address: str) -> str:
@@ -87,9 +91,9 @@ class Plugin(indigo.PluginBase):
         self.logger.threaddebug(f"closedPrefsConfigUi, valuesDict = {valuesDict}")
         if not userCancelled:
             self.logLevel = int(valuesDict.get("logLevel", logging.INFO))
+            self.logger.debug(f"LogLevel = {self.logLevel}")
             self.indigo_log_handler.setLevel(self.logLevel)
             self.plugin_file_handler.setLevel(self.logLevel)
-            self.logger.debug(f"LogLevel = {self.logLevel}")
 
     def startup(self):
         self.logger.debug("startup")
@@ -98,10 +102,11 @@ class Plugin(indigo.PluginBase):
             self.linked_device_list = json.loads(savedList)
             self.log_linked_devices()
 
+        ServiceBrowser(Zeroconf(ip_version=IPVersion.V4Only), ["_lutron._tcp.local."], handlers=[self.on_service_state_change])
+
         indigo.devices.subscribeToChanges()
 
         threading.Thread(target=self.run_async_thread).start()
-        ServiceBrowser(Zeroconf(ip_version=IPVersion.V4Only), ["_lutron._tcp.local."], handlers=[self.on_service_state_change])
         self.logger.debug("startup complete")
 
     def on_service_state_change(self, zeroconf: Zeroconf, service_type: str, name: str, state_change: ServiceStateChange) -> None:
@@ -363,26 +368,18 @@ class Plugin(indigo.PluginBase):
                     indigo.trigger.execute(trigger)
 
     def button_event(self, bridge, button_device, button_id, event_type):
-        self.logger.debug(f"button_event: button_device = {button_device}, button_id = {button_id}, event_type = {event_type}")
-
         button_address = f"{bridge}:{button_id}"
-        self.logger.debug(f"button_event: button_address = {button_address}")
+        self.logger.debug(f"button_event: {button_device=}, {button_address=}, {event_type=}")
 
-        for triggerID in self.triggers:
+        for triggerID in self.triggers:                 # look for raw press/release triggers
             trigger = indigo.triggers[triggerID]
             if trigger.pluginTypeId == "buttonEvent":
-                self.logger.debug(
-                    f"button_event: trigger event_type = {trigger.pluginProps['event_type']}, trigger address = {trigger.pluginProps['button_address']}")
-                if trigger.pluginProps['event_type'] == event_type and \
-                        trigger.pluginProps['button_address'] == button_address:
+                if trigger.pluginProps['event_type'] == event_type and trigger.pluginProps['button_address'] == button_address:
                     indigo.trigger.execute(trigger)
 
         if event_type == "Press":
-            # and update the tap count for multi-press triggers, only on PRESS events
-            if (button_address == self.lastKeyAddress) and (time.time() < (self.lastKeyTime + self.click_timeout)):
-                self.lastKeyTaps += 1
-            else:
-                self.lastKeyTaps = 1
+            # only process multi-press triggers on PRESS events
+            self.keypress_queue.put((button_address, time.time()))      # queue processed in async self.buttonMultiPressCheck()
 
             # check for linked devices, again only on PRESS events
             for link_item in self.linked_device_list.values():
@@ -393,36 +390,56 @@ class Plugin(indigo.PluginBase):
                     self.logger.debug(f"Linked Device Match, controlling_button: {controlling_button}, linked_device: {linked_device.id}")
                     indigo.device.toggle(linked_device.id)
 
-        self.lastKeyAddress = button_address
-        self.lastKeyTime = time.time()
-        self.newKeyPress = True
-
     async def buttonMultiPressCheck(self):
 
-        if self.newKeyPress:
+        if self.keypress_queue.empty():
+            if self.activeKeyPress and time.time() > (self.lastKeyTime + self.click_timeout):
+                self.logger.debug(f"buttonMultiPressCheck: Timeout reached for button = {self.currentKeyAddress}, presses = {self.currentKeyTaps}")
+                self.activeKeyPress = False
+                await self.multi_trigger_check()
+            return
 
-            # if last key press hasn't timed out yet, don't do anything
-            if time.time() < (self.lastKeyTime + self.click_timeout):
-                return
+        newKeyAddress, newKeyTime = self.keypress_queue.get()
+        self.logger.debug(f"buttonMultiPressCheck: New button press: {newKeyAddress}, {newKeyTime}")
 
-            self.logger.debug(f"buttonMultiPressCheck: Timeout reached for button = {self.lastKeyAddress}, presses = {self.lastKeyTaps}")
-            self.newKeyPress = False
+        if not self.activeKeyPress:
+            self.activeKeyPress = True
+            self.currentKeyAddress = newKeyAddress
+            self.currentKeyTaps = 1
+            self.lastKeyTime = newKeyTime
+            return
 
-            for triggerID in self.triggers:
-                trigger = indigo.triggers[triggerID]
-                if trigger.pluginTypeId != "multiButtonPress":
-                    continue
+        if newKeyAddress == self.currentKeyAddress:
+            self.currentKeyTaps += 1
+            return
 
-                if trigger.pluginProps["button_address"] != self.lastKeyAddress:
-                    self.logger.threaddebug(f"buttonMultiPressCheck: Skipping Trigger '{trigger.name}', wrong keypad button: {self.lastKeyAddress}")
-                    continue
+        else:
+            # newKeyAddress != self.currentKeyAddress - different button so process the current one
+            await self.multi_trigger_check()
 
-                if self.lastKeyTaps != int(trigger.pluginProps.get("clicks", "1")):
-                    self.logger.threaddebug(f"buttonMultiPressCheck: Skipping Trigger {trigger.name}, wrong click count: {self.lastKeyTaps}")
-                    continue
+            # then set up the new key
+            self.activeKeyPress = True
+            self.currentKeyAddress = newKeyAddress
+            self.currentKeyTaps = 1
+            self.lastKeyTime = newKeyTime
+            return
+        
+    async def multi_trigger_check(self):
+        for triggerID in self.triggers:
+            trigger = indigo.triggers[triggerID]
+            if trigger.pluginTypeId != "multiButtonPress":
+                continue
 
-                self.logger.debug(f"buttonMultiPressCheck: Executing Trigger '{trigger.name}', keypad button: {self.lastKeyAddress}")
-                indigo.trigger.execute(trigger)
+            if trigger.pluginProps["button_address"] != self.currentKeyAddress:
+                self.logger.threaddebug(f"buttonMultiPressCheck: Skipping Trigger '{trigger.name}', wrong keypad button: {self.currentKeyAddress}")
+                continue
+
+            if self.currentKeyTaps != int(trigger.pluginProps.get("clicks", "1")):
+                self.logger.threaddebug(f"buttonMultiPressCheck: Skipping Trigger {trigger.name}, wrong click count: {self.currentKeyTaps}")
+                continue
+
+            self.logger.debug(f"buttonMultiPressCheck: Executing Trigger '{trigger.name}', keypad button: {self.currentKeyAddress}")
+            indigo.trigger.execute(trigger)
 
     ##################
     # Device Methods

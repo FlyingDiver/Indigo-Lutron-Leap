@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Events>
 	<Event id="buttonEvent">
-        <Name>Button Event</Name>
+        <Name>Raw Button Events</Name>
  		<ConfigUI>
             <Field type="menu" id="event_type" defaultValue="Press">
                 <Label>Event:</Label>
@@ -23,7 +23,7 @@
  		</ConfigUI>
 	</Event>
     <Event id="multiButtonPress">
-        <Name>Button Presses</Name>
+        <Name>(Multi) Button Presses</Name>
  		<ConfigUI>
             <Field type="menu" id="clicks" defaultValue="1">
                 <Label>Presses:</Label>
