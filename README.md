@@ -29,7 +29,7 @@ Supported Devices:
 As of the current release only the following devices have been tested:
 
 * RadioRa 3 All-in-One Processor (RR-PROC3)
-* RadioRa 3 Dimmers (RRST-PRO-NFB-XX, etc)
+* RadioRa 3 Dimmers (RRST-PRO-XX, etc)
 * RadioRa 3 Keypads (RRST-W4B-XX, etc)
 * RadioRa 2 Dimmers (RRD-6ND, etc)
 * Lutron Caséta Smart Hub
@@ -44,9 +44,10 @@ As of the current release only the following devices have been tested:
 Note that Keypad buttons, Pico Remotes and the Occupancy sensors do not exist as Indigo devices. They can only be used as triggers 
 for action groups. These devices have no "state", so there are no devices for them.
 
-Currently the RRa3 Keypad LEDs are supported as Indigo switch devices, but cannot be controller if they are
+Currently the RRa3 Keypad LEDs are supported as Indigo switch devices, but cannot be controlled if they are
 programmed as device or scene controls in the Lutron software.  The Lutron scene settings will override any
-changes made in Indigo.  If you want to control the LEDs from Indigo, the buttons cannot be programmed at all.
+changes made in Indigo.  If you want to control the LEDs from Indigo, the buttons cannot be programmed in
+the Lutron Designer software at all.
 
 Before enabling the plugin, you need to make sure the zeroconf package is installed. You can do this from the command line:
 ````
@@ -57,7 +58,7 @@ When the plugin starts up, it uses zero-conf (aka Bonjour) to get a list of Lutr
 Not all discovered devices work with the plugin (the RRa2 Connect Bridge does not, for example). 
 
 Create a"Lutron Bridge" plugin device, and select your bridge from the popup. If nothing shows up, make sure the device is 
-online (you can see it in the Lutron mobile app). You can enable detailed debugging to see if the discovery 
+online (you can see it in the Lutron mobile app). You can enable debug logging to see if the discovery 
 process is doing anything.
 
 When you create the Bridge device, you'll be prompted to pair the plugin with the bridge. You need to press 
