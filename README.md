@@ -49,11 +49,8 @@ programmed as device or scene controls in the Lutron software.  The Lutron scene
 changes made in Indigo.  If you want to control the LEDs from Indigo, the buttons cannot be programmed in
 the Lutron Designer software at all.
 
-Before enabling the plugin, you need to make sure the zeroconf package is installed. You can do this from the command line:
-````
-pip3 install zeroconf
-````
-When the plugin starts up, it uses zero-conf (aka Bonjour) to get a list of Lutron bridge-type devices on your LAN.
+The plugin uses the zeroconf (aka Bonjour) protocol to discover the Lutron bridge devices on your LAN. If the library is
+not installed, a message will be printed to the Indigo log on plugin startup with instructions on how to install it.
 
 Not all discovered devices work with the plugin (the RRa2 Connect Bridge does not, for example). 
 

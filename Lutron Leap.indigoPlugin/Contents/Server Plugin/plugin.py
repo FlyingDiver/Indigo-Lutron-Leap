@@ -11,17 +11,9 @@ import asyncio
 import queue
 
 from device_types import LEAP_DEVICE_TYPES
-
-try:
-    from pylutron_caseta.pairing import async_pair
-    from pylutron_caseta.smartbridge import Smartbridge
-except ImportError as err:
-    raise ImportError(f"'Required Python libraries missing:{err}  Run 'pip3 install pylutron_caseta' in Terminal window, then reload plugin.")
-
-try:
-    from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
-except ImportError as err:
-    raise ImportError(f"'Required Python libraries missing:{err}  Run 'pip3 install zeroconf' in Terminal window, then reload plugin.")
+from pylutron_caseta.pairing import async_pair
+from pylutron_caseta.smartbridge import Smartbridge
+from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
 
 # Indigo Custom Device Types
 DEV_DIMMER = "leapDimmer"
@@ -81,6 +73,21 @@ class Plugin(indigo.PluginBase):
         self.activeKeyPress = False
         self.click_timeout = float(self.pluginPrefs.get("click_timeout", "0.5"))
 
+    def startup(self):
+        self.logger.debug("startup")
+
+        savedList = self.pluginPrefs.get("linked_devices", None)
+        if savedList:
+            self.linked_device_list = json.loads(savedList)
+            self.log_linked_devices()
+
+        ServiceBrowser(Zeroconf(ip_version=IPVersion.V4Only), ["_lutron._tcp.local."], handlers=[self.on_service_state_change])
+
+        indigo.devices.subscribeToChanges()
+
+        threading.Thread(target=self.run_async_thread).start()
+        self.logger.debug("startup complete")
+
     def ssl_file_path(self, address: str) -> str:
         folder = f"{indigo.server.getInstallFolderPath()}/Preferences/Plugins/{self.pluginId}/{address}"
         if not os.path.exists(folder):
@@ -94,20 +101,6 @@ class Plugin(indigo.PluginBase):
             self.logger.debug(f"LogLevel = {self.logLevel}")
             self.indigo_log_handler.setLevel(self.logLevel)
             self.plugin_file_handler.setLevel(self.logLevel)
-
-    def startup(self):
-        self.logger.debug("startup")
-        savedList = self.pluginPrefs.get("linked_devices", None)
-        if savedList:
-            self.linked_device_list = json.loads(savedList)
-            self.log_linked_devices()
-
-        ServiceBrowser(Zeroconf(ip_version=IPVersion.V4Only), ["_lutron._tcp.local."], handlers=[self.on_service_state_change])
-
-        indigo.devices.subscribeToChanges()
-
-        threading.Thread(target=self.run_async_thread).start()
-        self.logger.debug("startup complete")
 
     def on_service_state_change(self, zeroconf: Zeroconf, service_type: str, name: str, state_change: ServiceStateChange) -> None:
         self.logger.threaddebug(f"Service {name} of type {service_type} state changed: {state_change}")
