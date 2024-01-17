@@ -1,2 +1,2 @@
-zeroconf==0.131.0
+zeroconf==0.130.0
 pylutron_caseta==0.18.3
