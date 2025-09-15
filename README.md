@@ -49,10 +49,8 @@ programmed as device or scene controls in the Lutron software.  The Lutron scene
 changes made in Indigo.  If you want to control the LEDs from Indigo, the buttons cannot be programmed in
 the Lutron Designer software at all.
 
-The plugin uses the zeroconf (aka Bonjour) protocol to discover the Lutron bridge devices on your LAN. If the library is
-not installed, a message will be printed to the Indigo log on plugin startup with instructions on how to install it.
-
-Not all discovered devices work with the plugin (the RRa2 Connect Bridge does not, for example). 
+The plugin uses the zeroconf (aka Bonjour) protocol to discover the Lutron bridge devices on your LAN.  Not all 
+discovered devices work with the plugin (the RRa2 Connect Bridge does not, for example). 
 
 Create a"Lutron Bridge" plugin device, and select your bridge from the popup. If nothing shows up, make sure the device is 
 online (you can see it in the Lutron mobile app). You can enable debug logging to see if the discovery 
@@ -64,11 +62,12 @@ On the RRa3 processor, it's a very small button on the front of the device near 
 
 You should see something like this in the Indigo log:
 ````
-Lutron Leap                     Starting pairing process for Bridge Lutron-05124472.local., please press the pairing button on the Bridge.
+Lutron Leap                     Starting pairing process for Bridge Lutron-05124321.local., please press the pairing button on the Bridge.
 Lutron Leap                     Pairing complete: Bridge version is 1.115.
 ````
 
-Once that's complete, use the menu command to "Create Devices from Bridge". You cannot manually create the devices, only the auto-create method is supported.
+Once that's complete, use the menu command to "Create Devices from Bridge". You cannot manually create the devices, 
+only the auto-create method is supported.
 
 For other Lutron systems that use the original Lutron integration protocol, especially RadioRA 2, 
 see the original Lutron plugin at https://www.indigodomo.com/pluginstore/84/

@@ -1,2 +1,2 @@
-zeroconf==0.130.0
-pylutron_caseta==0.19.0
+zeroconf
+pylutron_caseta

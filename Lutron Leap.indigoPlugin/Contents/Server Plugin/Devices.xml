@@ -4,10 +4,14 @@
         <Name>Lutron Bridge</Name>
         <ConfigUI>
             <Field id="paired" type="checkbox" defaultValue="false" hidden="true" />
-            <Field id="address" type="menu">
+            <Field id="found_list" type="menu">
                 <Label>Bridge:</Label>
                 <List class="self" method="get_found_bridges" dynamicReload="true"/>
                 <CallbackMethod>menuChanged</CallbackMethod>
+            </Field>
+            <Field type="textfield" id="address" defaultvalue="localhost">
+                <Label>Bridge Address:</Label>
+                <CallbackMethod>menuChangedConfig</CallbackMethod>
             </Field>
             <Field id="pair_bridge_note" type="label">
                 <Label>Pressing "Save" here will initiate the pairing process with the bridge. Press the pairing button on Bridge device.</Label>

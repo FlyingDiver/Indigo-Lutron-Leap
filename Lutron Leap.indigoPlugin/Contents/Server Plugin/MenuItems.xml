@@ -30,7 +30,6 @@
 				<Label>Group New Devices By:</Label>
 				<List>
 					<Option value="None">No Folders</Option>
-					<Option value="Area">Device Location</Option>
 					<Option value="Type">Device Type</Option>
 				</List>
 			</Field>
