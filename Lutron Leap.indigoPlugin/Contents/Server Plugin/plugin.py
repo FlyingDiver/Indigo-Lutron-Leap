@@ -23,6 +23,7 @@ DEV_DIMMER = "leapDimmer"
 DEV_SHADE  = "leapShade"
 DEV_FAN    = "leapFan"
 DEV_GROUP  = "occupancy_group"
+DEV_COLOR  = "leapColor"
 
 _FAN_SPEED_MAP = {
     0: "Off",
@@ -282,7 +283,12 @@ class Plugin(indigo.PluginBase):
 
     def device_event(self, bridge_id, device_id):
 
-        device = indigo.devices[self.leap_devices[f"{bridge_id}:{device_id}"]]
+        try:
+            device = indigo.devices[self.leap_devices[f"{bridge_id}:{device_id}"]]
+        except Exception as e:
+            self.logger.error(f"device_event: Exception getting device for {bridge_id}:{device_id}: {e}")
+            return
+
         leap_data = self.leap_bridges[bridge_id].get_device_by_id(device_id)
         self.logger.threaddebug(f"{device.name}: device_event: leap_data = {leap_data}")
         self.update_device_states(device, leap_data)
@@ -507,7 +513,11 @@ class Plugin(indigo.PluginBase):
                 self.logger.error(f"{dev.name}: failed to update states: {e}")
         else:
             leap_device_id = device.pluginProps['device']
-            leap_data = bridge.get_device_by_id(leap_device_id)
+            try:
+                leap_data = bridge.get_device_by_id(leap_device_id)
+            except Exception as e:
+                self.logger.error(f"{device.name}: async_start_device: Exception getting device {leap_device_id} from bridge: {e}")
+                return
             self.logger.threaddebug(f"{device.name}: async_start_device leap_data = {leap_data}")
             bridge.add_subscriber(leap_device_id, lambda device_id=leap_device_id: self.device_event(bridge_id, device_id))
             self.update_device_states(device, leap_data)
@@ -595,7 +605,7 @@ class Plugin(indigo.PluginBase):
     # Relay / Dimmer / Shade
     ########################################
     def actionControlDimmerRelay(self, action, dev):
-        self.logger.debug(f"{dev.name}: actionControlDimmerRelay: action = {action}")
+        self.logger.threaddebug(f"{dev.name}: actionControlDimmerRelay: action = {action}")
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
 
@@ -836,6 +846,9 @@ class Plugin(indigo.PluginBase):
             elif device['type'] in LEAP_DEVICE_TYPES['light']:
                 device_type = DEV_DIMMER
             elif device['type'] in LEAP_DEVICE_TYPES['switch']:
+                if device['model'] == 'KeypadLED':
+                    self.logger.debug(f"Skipping keypadLED")
+                    continue
                 device_type = DEV_SWITCH
             elif device['type'] in LEAP_DEVICE_TYPES['fan']:
                 device_type = DEV_FAN
@@ -870,7 +883,8 @@ class Plugin(indigo.PluginBase):
         for group in bridge.occupancy_groups.values():
 
             address = f"{bridge_id}:GROUP.{group['occupancy_group_id']}"
-            name = f"{group['name']} ({group['occupancy_group_id']})"
+            name = f"{self.get_area_path(group.get('area'), bridge_id)}"
+            name += f"/{group['name']} ({group['occupancy_group_id']})"
             props = {
                 "bridge": bridge_id,
                 "device": group['occupancy_group_id'],
