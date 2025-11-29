@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import indigo   # noqa
 import logging
 import json
 import os
@@ -9,9 +10,8 @@ from datetime import timedelta
 import threading
 import asyncio
 import queue
-from os import device_encoding
 
-from pylutron_caseta import _LEAP_DEVICE_TYPES as LEAP_DEVICE_TYPES
+from pylutron_caseta import _LEAP_DEVICE_TYPES as LEAP_DEVICE_TYPES     # noqa
 from pylutron_caseta import RA3_OCCUPANCY_SENSOR_DEVICE_TYPES
 from pylutron_caseta.pairing import async_pair
 from pylutron_caseta.smartbridge import Smartbridge
@@ -32,8 +32,8 @@ _FAN_SPEED_MAP = {
     3: "High",
 }
 
-def clamp(n, minn, maxn):
-    return max(min(maxn, n), minn)
+def clamp(n, min_value, max_value):
+    return max(min(max_value, n), min_value)
 
 class Plugin(indigo.PluginBase):
 
@@ -510,7 +510,7 @@ class Plugin(indigo.PluginBase):
             try:
                 device.updateStatesOnServer(update_list)
             except Exception as e:
-                self.logger.error(f"{dev.name}: failed to update states: {e}")
+                self.logger.error(f"{device.name}: failed to update states: {e}")
         else:
             leap_device_id = device.pluginProps['device']
             try:
@@ -581,7 +581,7 @@ class Plugin(indigo.PluginBase):
         return buttons
 
     def linkable_devices(self, filter="", valuesDict=None, typeId="", targetId=0):
-        self.logger.threaddebug(f"linkable_devices, typeId = {typeId}, targetId = {targetId}, valuesDict = {valuesDict}")
+        self.logger.threaddebug(f"linkable_devices, {typeId=}, {targetId=}, {filter=}, valuesDict = {valuesDict}")
         retList = []
         for dev in indigo.devices:
             if hasattr(dev, "onState"):
@@ -592,7 +592,7 @@ class Plugin(indigo.PluginBase):
 
     # doesn't do anything, just needed to force other menus to dynamically refresh
     def menuChanged(self, valuesDict=None, typeId=None, devId=None):  # noqa
-        self.logger.threaddebug(f"menuChmenuChanged: typeId = {typeId}, devId = {devId}, valuesDict = {valuesDict}")
+        self.logger.threaddebug(f"menuChanged: typeId = {typeId}, devId = {devId}, valuesDict = {valuesDict}")
         return valuesDict
 
     def menuChangedConfig(self, valuesDict):
@@ -604,35 +604,33 @@ class Plugin(indigo.PluginBase):
     ########################################
     # Relay / Dimmer / Shade
     ########################################
-    def actionControlDimmerRelay(self, action, dev):
-        self.logger.threaddebug(f"{dev.name}: actionControlDimmerRelay: action = {action}")
+    def actionControlDimmerRelay(self, action, device):
+        self.logger.threaddebug(f"{device.name}: actionControlDimmerRelay: action = {action}")
 
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        bridge = self.leap_bridges[device.pluginProps["bridge"]]
 
         if action.deviceAction == indigo.kDeviceAction.TurnOn:
-            self.event_loop.create_task(bridge.turn_on(dev.pluginProps["device"]))
+            self.event_loop.create_task(bridge.turn_on(device.pluginProps["device"]))
 
         elif action.deviceAction == indigo.kDeviceAction.TurnOff:
-            self.event_loop.create_task(bridge.turn_off(dev.pluginProps["device"]))
+            self.event_loop.create_task(bridge.turn_off(device.pluginProps["device"]))
 
         elif action.deviceAction == indigo.kDeviceAction.Toggle:
-            if dev.onState:
-                self.event_loop.create_task(bridge.turn_off(dev.pluginProps["device"]))
+            if device.onState:
+                self.event_loop.create_task(bridge.turn_off(device.pluginProps["device"]))
             else:
-                self.event_loop.create_task(bridge.turn_on(dev.pluginProps["device"]))
+                self.event_loop.create_task(bridge.turn_on(device.pluginProps["device"]))
 
         elif action.deviceAction == indigo.kDeviceAction.SetBrightness:
-            self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], clamp(action.actionValue, 0, 100)))
+            self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], clamp(action.actionValue, 0, 100)))
 
         elif action.deviceAction == indigo.kDimmerRelayAction.BrightenBy:
-            self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], clamp(dev.brightness + action.actionValue, 0, 100)))
+            self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], clamp(device.brightness + action.actionValue, 0, 100)))
 
         elif action.deviceAction == indigo.kDimmerRelayAction.DimBy:
-            self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], clamp(dev.brightness - action.actionValue, 0, 100)))
+            self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], clamp(device.brightness - action.actionValue, 0, 100)))
 
         elif action.deviceAction == indigo.kDeviceAction.SetColorLevels:
-
-            actionColorVals = action.actionValue
 
             if device.supportsWhiteTemperature and 'whiteTemperature' in action.actionValue:
                 pass
@@ -719,23 +717,23 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
         self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime))
 
-    def start_raising_action(self, pluginAction, dev):
+    def start_raising_action(self, _pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         self.logger.debug(f"{dev.name}: Raising")
         self.event_loop.create_task(bridge.raise_cover(dev.pluginProps["device"]))
 
-    def start_lowering_action(self, pluginAction, dev):
+    def start_lowering_action(self, _pluginAction, dev):
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         self.logger.debug(f"{dev.name}: Lowering")
         self.event_loop.create_task(bridge.lower_cover(dev.pluginProps["device"]))
 
-    def stop_shade_action(self, pluginAction, dev):
+    def stop_shade_action(self, _pluginAction, device):
 
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
-        self.logger.debug(f"{dev.name}: Stopping")
-        self.event_loop.create_task(bridge.stop_cover(dev.pluginProps["device"]))
+        bridge = self.leap_bridges[device.pluginProps["bridge"]]
+        self.logger.debug(f"{device.name}: Stopping")
+        self.event_loop.create_task(bridge.stop_cover(device.pluginProps["device"]))
 
     def set_tilt_action(self, pluginAction, dev):
 
@@ -753,9 +751,8 @@ class Plugin(indigo.PluginBase):
 
     ########################################
 
-    def menu_log_bridge_info(self, valuesDict, typeId):
+    def menu_log_bridge_info(self, valuesDict, _typeId):
         bridge_id = int(valuesDict["bridge"])
-        bridge = self.leap_bridges[bridge_id]
         self.logger.info(f"Bridge: {indigo.devices[bridge_id].name}")
         self.logger.info(f"Devices:\n{json.dumps(self.leap_known_devices[bridge_id], sort_keys=True, indent=4)}")
         self.logger.info(f"Buttons:\n{json.dumps(self.leap_buttons[bridge_id], sort_keys=True, indent=4)}")
@@ -764,7 +761,7 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"Groups:\n{json.dumps(self.leap_known_groups[bridge_id], sort_keys=True, indent=4)}")
         return True
 
-    def menu_create_devices_for_bridge(self, valuesDict, typeId):
+    def menu_create_devices_for_bridge(self, valuesDict, _typeId):
         self.event_loop.create_task(self.create_devices_for_bridge(valuesDict))
         return True
 
@@ -772,7 +769,7 @@ class Plugin(indigo.PluginBase):
     # Methods to handle the Manage Linked Devices dialog
     ########################################
 
-    def add_linked_device(self, valuesDict, typeId=None, devId=None):
+    def add_linked_device(self, valuesDict, _typeId, _devId):
         self.logger.debug(f"add_linked_device: valuesDict: {valuesDict}")
 
         controlling_button = valuesDict["controlling_button"]
@@ -795,7 +792,7 @@ class Plugin(indigo.PluginBase):
 
         indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
-    def delete_linked_devices(self, valuesDict, typeId=None, devId=None):
+    def delete_linked_devices(self, valuesDict, _typeId, _devId):
 
         for item in valuesDict["linkedDeviceList"]:
             self.logger.info(f"deleting device {item}")
@@ -804,7 +801,7 @@ class Plugin(indigo.PluginBase):
         self.log_linked_devices()
         indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
-    def list_linked_devices(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def list_linked_devices(self, _filter, _valuesDict, _typeId, _targetId):
         returnList = list()
         for linkID, linkItem in self.linked_device_list.items():
             returnList.append((linkID, linkItem["name"]))
@@ -855,15 +852,11 @@ class Plugin(indigo.PluginBase):
             elif device['type'] in LEAP_DEVICE_TYPES['cover']:
                 device_type = DEV_SHADE
             else:
-                self.logger.warning(f"Unknown Lutron device type {device['type']}")
+                self.logger.warning(f"Unknown Lutron device type {device['type']}: {device}")
                 continue
 
             # build a full path name for the device
-            if parent_device := self.leap_known_devices[bridge_id].get(device.get('parent_device')):
-                name = self.get_area_path(parent_device.get('area'), bridge_id)
-            else:
-                name = "Unknown"
-
+            parent_device = self.leap_known_devices[bridge_id].get(device.get('parent_device'))
             name = f"{self.get_area_path(device.get('area'), bridge_id)}"
             if parent_device and (parent_device_control_station_name := parent_device.get('control_station_name')):
                 name += f"/{parent_device_control_station_name}"
@@ -939,7 +932,7 @@ class Plugin(indigo.PluginBase):
 
         else:
             self.logger.error("Unknown value for group_by")
-            return
+            return None
 
         # finally, create the device
 
