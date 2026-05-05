@@ -99,6 +99,7 @@ class Plugin(indigo.PluginBase):
     def closedPrefsConfigUi(self, valuesDict, userCancelled):
         self.logger.threaddebug(f"closedPrefsConfigUi, valuesDict = {valuesDict}")
         if not userCancelled:
+            self.click_timeout = float(valuesDict.get("click_timeout", "0.5"))
             self.logLevel = int(valuesDict.get("logLevel", logging.INFO))
             self.logger.debug(f"LogLevel = {self.logLevel}")
             self.indigo_log_handler.setLevel(self.logLevel)
@@ -564,17 +565,22 @@ class Plugin(indigo.PluginBase):
         if bridge_id:
             for button in self.leap_buttons[bridge_id].values():
                 address = f"{bridge_id}:{button['device_id']}"
-                # build a full path name for the button
-                if parent_device := self.leap_known_devices[bridge_id].get(button.get('parent_device')):
-                    name = self.get_area_path(parent_device.get('area'), bridge_id)
-                else:
-                    name = "Unknown"
-                if parent_device_control_station_name := parent_device.get('control_station_name'):
-                    name += f"/{parent_device_control_station_name}"
-                if parent_device_name := parent_device.get('device_name'):
-                    name += f"/{parent_device_name}"
-                name += f"/({button.get('button_number')}) {button.get('device_name')} ({button['device_id']})"
+                parent_device = self.leap_known_devices[bridge_id].get(button.get('parent_device'))
 
+                # build a full path name for the button, starting with the area (if defined)
+                name = ""
+
+                if parent_device:
+                    if area := self.get_area_path(parent_device.get('area'), bridge_id):
+                        name = f"{area}/"
+
+                    if control_station_name := parent_device.get('control_station_name'):
+                        name += f"{control_station_name}/"
+
+                    if parent_device_name := parent_device.get('device_name'):
+                        name += f"{parent_device_name}/"
+
+                name += f"({button.get('button_number')}) {button.get('device_name')} ({button['device_id']})"
                 buttons.append((address, name))
             buttons.sort(key=lambda tup: tup[1])
         self.logger.threaddebug(f"get_button_list: {buttons=}")
