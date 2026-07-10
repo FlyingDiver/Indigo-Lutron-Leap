@@ -614,7 +614,10 @@ class Plugin(indigo.PluginBase):
     def actionControlDimmerRelay(self, action: indigo.PluginAction, device: indigo.Device) -> None:
         self.logger.threaddebug(f"{device.name}: actionControlDimmerRelay: action = {action}")
 
-        bridge = self.leap_bridges[device.pluginProps["bridge"]]
+        bridge = self.leap_bridges.get(device.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{device.name}: actionControlDimmerRelay: bridge not found")
+            return
 
         if action.deviceAction == indigo.kDeviceAction.TurnOn:
             self.event_loop.create_task(bridge.turn_on(device.pluginProps["device"]))
@@ -704,21 +707,30 @@ class Plugin(indigo.PluginBase):
 
     def activate_scene_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[bridge_dev.id]
+        bridge = self.leap_bridges.get(bridge_dev.id)
+        if not bridge:
+            self.logger.warning(f"{bridge_dev.name}: activate_scene_action: bridge not found")
+            return
         scene_id = pluginAction.props["scene_id"]
         self.logger.debug(f"{bridge_dev.name}: Activating scene {scene_id}")
         self.event_loop.create_task(bridge.activate_scene(scene_id))
 
     def tap_button_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[bridge_dev.id]
+        bridge = self.leap_bridges.get(bridge_dev.id)
+        if not bridge:
+            self.logger.warning(f"{bridge_dev.name}: tap_button_action: bridge not found")
+            return
         button_address = pluginAction.props["button_address"]
         self.logger.debug(f"{bridge_dev.name}: Tapping button {button_address}")
         self.event_loop.create_task(bridge.tap_button(button_address.split(":")[1]))
 
     def fade_dimmer_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{dev.name}: fade_dimmer_action: bridge not found")
+            return
         brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
         fadeTime = timedelta(seconds=float(indigo.activePlugin.substitute(pluginAction.props["fadeTime"])))
         self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
@@ -726,32 +738,47 @@ class Plugin(indigo.PluginBase):
 
     def start_raising_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{dev.name}: start_raising_action: bridge not found")
+            return
         self.logger.debug(f"{dev.name}: Raising")
         self.event_loop.create_task(bridge.raise_cover(dev.pluginProps["device"]))
 
     def start_lowering_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{dev.name}: start_lowering_action: bridge not found")
+            return
         self.logger.debug(f"{dev.name}: Lowering")
         self.event_loop.create_task(bridge.lower_cover(dev.pluginProps["device"]))
 
     def stop_shade_action(self, _pluginAction: indigo.PluginAction, device: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[device.pluginProps["bridge"]]
+        bridge = self.leap_bridges.get(device.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{device.name}: stop_shade_action: bridge not found")
+            return
         self.logger.debug(f"{device.name}: Stopping")
         self.event_loop.create_task(bridge.stop_cover(device.pluginProps["device"]))
 
     def set_tilt_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{dev.name}: set_tilt_action: bridge not found")
+            return
         tilt = float(indigo.activePlugin.substitute(pluginAction.props["tilt"]))
         self.logger.debug(f"{dev.name}: Tilting to {tilt}")
         self.event_loop.create_task(bridge.set_tilt(dev.pluginProps["device"], tilt))
 
     def set_fan_speed_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges[dev.pluginProps["bridge"]]
+        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{dev.name}: set_fan_speed_action: bridge not found")
+            return
         fan_speed = pluginAction.props["fan_speed"]
         self.logger.debug(f"{dev.name}: Setting fan speed: {fan_speed}")
         self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], fan_speed))
