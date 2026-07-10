@@ -10,6 +10,7 @@ from datetime import timedelta
 import threading
 import asyncio
 import queue
+from typing import Any, Optional
 
 from pylutron_caseta import _LEAP_DEVICE_TYPES as LEAP_DEVICE_TYPES     # noqa
 from pylutron_caseta import RA3_OCCUPANCY_SENSOR_DEVICE_TYPES
@@ -25,57 +26,57 @@ DEV_FAN    = "leapFan"
 DEV_GROUP  = "occupancy_group"
 DEV_COLOR  = "leapColor"
 
-_FAN_SPEED_MAP = {
+_FAN_SPEED_MAP: dict[int, str] = {
     0: "Off",
     1: "Low",
     2: "Medium",
     3: "High",
 }
 
-def clamp(n, min_value, max_value):
+def clamp(n: float, min_value: float, max_value: float) -> float:
     return max(min(max_value, n), min_value)
 
 class Plugin(indigo.PluginBase):
 
-    def __init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs):
+    def __init__(self, pluginId: str, pluginDisplayName: str, pluginVersion: str, pluginPrefs: indigo.Dict) -> None:
         indigo.PluginBase.__init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs)
 
         pfmt = logging.Formatter('%(asctime)s.%(msecs)03d\t[%(levelname)8s] %(name)20s.%(funcName)-25s%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         self.plugin_file_handler.setFormatter(pfmt)
-        self.logLevel = int(pluginPrefs.get("logLevel", logging.DEBUG))
+        self.logLevel: int = int(pluginPrefs.get("logLevel", logging.DEBUG))
         self.logger.debug(f"LogLevel = {self.logLevel}")
         self.indigo_log_handler.setLevel(self.logLevel)
         self.plugin_file_handler.setLevel(self.logLevel)
 
-        self.pluginId = pluginId
-        self.pluginPrefs = pluginPrefs
-        self.event_loop = None
-        self.async_thread = None
+        self.pluginId: str = pluginId
+        self.pluginPrefs: indigo.Dict = pluginPrefs
+        self.event_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.async_thread: Optional[threading.Thread] = None
 
-        self.found_bridges = {}  # zeroconf discovered bridges
+        self.found_bridges: dict[str, str] = {}  # zeroconf discovered bridges
 
-        self.leap_bridges = {}  # devices with matching Indigo devices
-        self.leap_devices = {}
-        self.leap_buttons = {}
-        self.leap_scenes = {}
-        self.leap_areas = {}
+        self.leap_bridges: dict[int, Optional[Smartbridge]] = {}  # devices with matching Indigo devices
+        self.leap_devices: dict[str, int] = {}
+        self.leap_buttons: dict[int, dict[str, dict[str, Any]]] = {}
+        self.leap_scenes: dict[int, dict[str, dict[str, Any]]] = {}
+        self.leap_areas: dict[int, dict[str, dict[str, Any]]] = {}
 
-        self.leap_known_devices = {}
-        self.leap_known_groups = {}
+        self.leap_known_devices: dict[int, dict[str, dict[str, Any]]] = {}
+        self.leap_known_groups: dict[int, dict[str, dict[str, Any]]] = {}
 
-        self.linked_device_list = {}
+        self.linked_device_list: dict[str, dict[str, str]] = {}
 
-        self.bridge_connected_events = {}
+        self.bridge_connected_events: dict[int, asyncio.Event] = {}
 
-        self.keypress_queue = queue.Queue()
+        self.keypress_queue: queue.Queue[tuple[str, float]] = queue.Queue()
 
-        self.currentKeyTime = 0
-        self.currentKeyAddress = None
-        self.currentKeyTaps = 0
-        self.activeKeyPress = False
-        self.click_timeout = float(self.pluginPrefs.get("click_timeout", "0.5"))
+        self.currentKeyTime: float = 0
+        self.currentKeyAddress: Optional[str] = None
+        self.currentKeyTaps: int = 0
+        self.activeKeyPress: bool = False
+        self.click_timeout: float = float(self.pluginPrefs.get("click_timeout", "0.5"))
 
-    def startup(self):
+    def startup(self) -> None:
         self.logger.debug("startup")
 
         savedList = self.pluginPrefs.get("linked_devices", None)
@@ -96,7 +97,7 @@ class Plugin(indigo.PluginBase):
             os.makedirs(folder)
         return folder + "/leapBridge"
 
-    def closedPrefsConfigUi(self, valuesDict, userCancelled):
+    def closedPrefsConfigUi(self, valuesDict: indigo.Dict, userCancelled: bool) -> None:
         self.logger.threaddebug(f"closedPrefsConfigUi, valuesDict = {valuesDict}")
         if not userCancelled:
             self.click_timeout = float(valuesDict.get("click_timeout", "0.5"))
@@ -124,7 +125,7 @@ class Plugin(indigo.PluginBase):
         #
         ################################################################################
 
-    def deviceDeleted(self, deleted_device):
+    def deviceDeleted(self, deleted_device: indigo.Device) -> None:
         indigo.PluginBase.deviceDeleted(self, deleted_device)
 
         for link_id in list(self.linked_device_list.keys()):
@@ -135,12 +136,12 @@ class Plugin(indigo.PluginBase):
                 self.log_linked_devices()
                 indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
-    def deviceUpdated(self, oldDevice, newDevice):
+    def deviceUpdated(self, oldDevice: indigo.Device, newDevice: indigo.Device) -> None:
         indigo.PluginBase.deviceUpdated(self, oldDevice, newDevice)
 
     ##############################################################################################
 
-    def run_async_thread(self):
+    def run_async_thread(self) -> None:
         self.logger.debug("run_async_thread starting")
         self.event_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.event_loop)
@@ -148,7 +149,7 @@ class Plugin(indigo.PluginBase):
         self.event_loop.close()
         self.logger.debug("run_async_thread exiting")
 
-    async def async_main(self):
+    async def async_main(self) -> None:
         self.logger.debug("async_main starting")
 
         while True:
@@ -159,7 +160,7 @@ class Plugin(indigo.PluginBase):
                 break
         self.logger.debug("async_main: exiting")
 
-    async def lap_pair(self, deviceID, address: str):
+    async def lap_pair(self, deviceID: int, address: str) -> None:
         """
         Perform LAP pairing.
 
@@ -196,7 +197,7 @@ class Plugin(indigo.PluginBase):
         ]
         dev.updateStatesOnServer(update_list)
 
-    async def bridge_connect(self, indigo_bridge_dev):
+    async def bridge_connect(self, indigo_bridge_dev: indigo.Device) -> None:
         path = self.ssl_file_path(indigo_bridge_dev.address)
         if not os.path.exists(path + ".key"):
             self.logger.warning(f"{indigo_bridge_dev.name}: SSL files not found at {path}.  Unable to connect.")
@@ -257,7 +258,7 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"{indigo_bridge_dev.name}: Notifying devices that connection is complete")
         self.bridge_connected_events[indigo_bridge_dev.id].set()
 
-    def update_device_states(self, device, data):
+    def update_device_states(self, device: indigo.Device, data: dict[str, Any]) -> None:
         update_list = [
             {'key': "area", 'value': data.get('area')},
             {'key': "button_groups", 'value': data.get('button_groups')},
@@ -282,7 +283,7 @@ class Plugin(indigo.PluginBase):
     # Event Handlers
     ##############################################################################################
 
-    def device_event(self, bridge_id, device_id):
+    def device_event(self, bridge_id: int, device_id: str) -> None:
 
         try:
             device = indigo.devices[self.leap_devices[f"{bridge_id}:{device_id}"]]
@@ -342,7 +343,7 @@ class Plugin(indigo.PluginBase):
         else:
             self.logger.debug(f"{device.name}: device_event Unknown device type: {device.deviceTypeId}")
 
-    def occupancy_event(self, bridge_id, group_id):
+    def occupancy_event(self, bridge_id: int, group_id: str) -> None:
         self.logger.debug(f"occupancy_event: bridge_id = {bridge_id}, group_id = {group_id}")
 
         dev = indigo.devices[self.leap_devices[f"{bridge_id}:GROUP.{group_id}"]]   # occupancy group device
@@ -375,7 +376,7 @@ class Plugin(indigo.PluginBase):
                         trigger.pluginProps['event_type'] == data['status']:
                     indigo.trigger.execute(trigger)
 
-    def button_event(self, bridge, button_device, button_id, event_type):
+    def button_event(self, bridge: int, button_device: str, button_id: str, event_type: str) -> None:
         button_address = f"{bridge}:{button_id}"
         self.logger.debug(f"button_event: {button_device=}, {button_address=}, {event_type=}")
 
@@ -397,7 +398,7 @@ class Plugin(indigo.PluginBase):
                     self.logger.debug(f"Linked Device Match, controlling_button: {controlling_button}, linked_device: {linked_device.id}")
                     indigo.device.toggle(linked_device.id)
 
-    async def buttonMultiPressCheck(self):
+    async def buttonMultiPressCheck(self) -> None:
 
         if self.keypress_queue.empty():
             if self.activeKeyPress and time.time() > (self.currentKeyTime + self.click_timeout):
@@ -429,7 +430,7 @@ class Plugin(indigo.PluginBase):
             self.currentKeyTaps = 1
             self.currentKeyTime = newKeyTime
 
-    async def multi_trigger_check(self):
+    async def multi_trigger_check(self) -> None:
         for trigger in indigo.triggers.iter("self"):
             if trigger.pluginTypeId != "multiButtonPress":
                 continue
@@ -449,7 +450,7 @@ class Plugin(indigo.PluginBase):
     # Device Methods
     ##################
 
-    def validateDeviceConfigUi(self, valuesDict, typeId, devId):
+    def validateDeviceConfigUi(self, valuesDict: indigo.Dict, typeId: str, devId: int) -> tuple[bool, indigo.Dict]:
         self.logger.debug(f"validateDeviceConfigUi, typeId = {typeId}, devId = {devId}, valuesDict = {valuesDict}")
 
         if typeId == 'leapBridge':
@@ -457,7 +458,7 @@ class Plugin(indigo.PluginBase):
 
         return True, valuesDict
 
-    def deviceStartComm(self, device):
+    def deviceStartComm(self, device: indigo.Device) -> None:
         self.logger.threaddebug(f"{device.name}: Starting Device")
 
         if device.deviceTypeId == 'leapBridge':
@@ -473,12 +474,12 @@ class Plugin(indigo.PluginBase):
 
         device.stateListOrDisplayStateIdChanged()
 
-    def deviceStopComm(self, device):
+    def deviceStopComm(self, device: indigo.Device) -> None:
         self.logger.threaddebug(f"{device.name}: Stopping Device")
         if device.deviceTypeId == 'leapBridge':
             del self.leap_bridges[device.id]
 
-    async def async_start_device(self, device):
+    async def async_start_device(self, device: indigo.Device) -> None:
 
         # wait for the associated bridge to connect
         while not self.bridge_connected_events.get(int(device.pluginProps['bridge']), None):
@@ -527,25 +528,25 @@ class Plugin(indigo.PluginBase):
     # callbacks from device creation UI
     ########################################
 
-    def get_found_bridges(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def get_found_bridges(self, filter: str = "", valuesDict: Optional[indigo.Dict] = None, typeId: str = "", targetId: int = 0) -> list[tuple[str, str]]:
         self.logger.threaddebug(f"get_found_bridges: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
         bridges = [(k, v) for k, v in self.found_bridges.items()]
         self.logger.threaddebug(f"get_found_bridges: bridges = {bridges}")
         return bridges
 
-    def get_bridge_list(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def get_bridge_list(self, filter: str = "", valuesDict: Optional[indigo.Dict] = None, typeId: str = "", targetId: int = 0) -> list[tuple[int, str]]:
         self.logger.threaddebug(f"get_bridge_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
         bridges = [(k, indigo.devices[int(k)].name) for k in self.leap_bridges.keys()]
         self.logger.threaddebug(f"get_bridge_list: bridges = {bridges}")
         return bridges
 
-    def get_scene_list(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def get_scene_list(self, filter: str = "", valuesDict: Optional[indigo.Dict] = None, typeId: str = "", targetId: int = 0) -> list[tuple[str, str]]:
         self.logger.threaddebug(f"get_scene_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
         scenes = [(k, v['name']) for k, v in self.leap_scenes[targetId].items()]
         self.logger.threaddebug(f"get_scene_list: scenes = {scenes}")
         return scenes
 
-    def get_area_path(self, area_id, bridge_id):
+    def get_area_path(self, area_id: Optional[str], bridge_id: int) -> Optional[str]:
         if not area_id:
             return None
 
@@ -558,7 +559,7 @@ class Plugin(indigo.PluginBase):
             else:
                 return area.get('name')
 
-    def get_button_list(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def get_button_list(self, filter: str = "", valuesDict: Optional[indigo.Dict] = None, typeId: str = "", targetId: int = 0) -> list[tuple[str, str]]:
         self.logger.threaddebug(f"get_button_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
         bridge_id = int(valuesDict.get('bridge', targetId))
         buttons = []
@@ -586,7 +587,7 @@ class Plugin(indigo.PluginBase):
         self.logger.threaddebug(f"get_button_list: {buttons=}")
         return buttons
 
-    def linkable_devices(self, filter="", valuesDict=None, typeId="", targetId=0):
+    def linkable_devices(self, filter: str = "", valuesDict: Optional[indigo.Dict] = None, typeId: str = "", targetId: int = 0) -> list[tuple[int, str]]:
         self.logger.threaddebug(f"linkable_devices, {typeId=}, {targetId=}, {filter=}, valuesDict = {valuesDict}")
         retList = []
         for dev in indigo.devices:
@@ -597,11 +598,11 @@ class Plugin(indigo.PluginBase):
         return retList
 
     # doesn't do anything, just needed to force other menus to dynamically refresh
-    def menuChanged(self, valuesDict=None, typeId=None, devId=None):  # noqa
+    def menuChanged(self, valuesDict: Optional[indigo.Dict] = None, typeId: Optional[str] = None, devId: Optional[int] = None) -> Optional[indigo.Dict]:  # noqa
         self.logger.threaddebug(f"menuChanged: typeId = {typeId}, devId = {devId}, valuesDict = {valuesDict}")
         return valuesDict
 
-    def menuChangedConfig(self, valuesDict, typeId, devId):
+    def menuChangedConfig(self, valuesDict: indigo.Dict, typeId: str, devId: int) -> indigo.Dict:
         self.logger.threaddebug(f"menuChangedConfig: valuesDict = {valuesDict}")
         if server := valuesDict.get('found_list'):
             valuesDict['address'] = server
@@ -610,7 +611,7 @@ class Plugin(indigo.PluginBase):
     ########################################
     # Relay / Dimmer / Shade
     ########################################
-    def actionControlDimmerRelay(self, action, device):
+    def actionControlDimmerRelay(self, action: indigo.PluginAction, device: indigo.Device) -> None:
         self.logger.threaddebug(f"{device.name}: actionControlDimmerRelay: action = {action}")
 
         bridge = self.leap_bridges[device.pluginProps["bridge"]]
@@ -651,7 +652,7 @@ class Plugin(indigo.PluginBase):
     # Fans
     ########################################
 
-    def actionControlSpeedControl(self, action, dev):
+    def actionControlSpeedControl(self, action: indigo.PluginAction, dev: indigo.Device) -> None:
         self.logger.debug(f"{dev.name}: actionControlSpeedControl: action = {action}")
         if dev.deviceTypeId != "leapFan":
             self.logger.warning(f"{dev.name}: actionControlSpeedControl: not a leapFan device")
@@ -701,21 +702,21 @@ class Plugin(indigo.PluginBase):
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
     ########################################
 
-    def activate_scene_action(self, pluginAction, bridge_dev):
+    def activate_scene_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
         bridge = self.leap_bridges[bridge_dev.id]
         scene_id = pluginAction.props["scene_id"]
         self.logger.debug(f"{bridge_dev.name}: Activating scene {scene_id}")
         self.event_loop.create_task(bridge.activate_scene(scene_id))
 
-    def tap_button_action(self, pluginAction, bridge_dev):
+    def tap_button_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
         bridge = self.leap_bridges[bridge_dev.id]
         button_address = pluginAction.props["button_address"]
         self.logger.debug(f"{bridge_dev.name}: Tapping button {button_address}")
         self.event_loop.create_task(bridge.tap_button(button_address.split(":")[1]))
 
-    def fade_dimmer_action(self, pluginAction, dev):
+    def fade_dimmer_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
@@ -723,32 +724,32 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
         self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime))
 
-    def start_raising_action(self, _pluginAction, dev):
+    def start_raising_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         self.logger.debug(f"{dev.name}: Raising")
         self.event_loop.create_task(bridge.raise_cover(dev.pluginProps["device"]))
 
-    def start_lowering_action(self, _pluginAction, dev):
+    def start_lowering_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         self.logger.debug(f"{dev.name}: Lowering")
         self.event_loop.create_task(bridge.lower_cover(dev.pluginProps["device"]))
 
-    def stop_shade_action(self, _pluginAction, device):
+    def stop_shade_action(self, _pluginAction: indigo.PluginAction, device: indigo.Device) -> None:
 
         bridge = self.leap_bridges[device.pluginProps["bridge"]]
         self.logger.debug(f"{device.name}: Stopping")
         self.event_loop.create_task(bridge.stop_cover(device.pluginProps["device"]))
 
-    def set_tilt_action(self, pluginAction, dev):
+    def set_tilt_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         tilt = float(indigo.activePlugin.substitute(pluginAction.props["tilt"]))
         self.logger.debug(f"{dev.name}: Tilting to {tilt}")
         self.event_loop.create_task(bridge.set_tilt(dev.pluginProps["device"], tilt))
 
-    def set_fan_speed_action(self, pluginAction, dev):
+    def set_fan_speed_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
         bridge = self.leap_bridges[dev.pluginProps["bridge"]]
         fan_speed = pluginAction.props["fan_speed"]
@@ -757,7 +758,7 @@ class Plugin(indigo.PluginBase):
 
     ########################################
 
-    def menu_log_bridge_info(self, valuesDict, _typeId):
+    def menu_log_bridge_info(self, valuesDict: indigo.Dict, _typeId: str) -> bool:
         bridge_id = int(valuesDict["bridge"])
         self.logger.info(f"Bridge: {indigo.devices[bridge_id].name}")
         self.logger.info(f"Devices:\n{json.dumps(self.leap_known_devices[bridge_id], sort_keys=True, indent=4)}")
@@ -767,7 +768,7 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"Groups:\n{json.dumps(self.leap_known_groups[bridge_id], sort_keys=True, indent=4)}")
         return True
 
-    def menu_create_devices_for_bridge(self, valuesDict, _typeId):
+    def menu_create_devices_for_bridge(self, valuesDict: indigo.Dict, _typeId: str) -> bool:
         self.event_loop.create_task(self.create_devices_for_bridge(valuesDict))
         return True
 
@@ -775,7 +776,7 @@ class Plugin(indigo.PluginBase):
     # Methods to handle the Manage Linked Devices dialog
     ########################################
 
-    def add_linked_device(self, valuesDict, _typeId, _devId):
+    def add_linked_device(self, valuesDict: indigo.Dict, _typeId: str, _devId: int) -> None:
         self.logger.debug(f"add_linked_device: valuesDict: {valuesDict}")
 
         controlling_button = valuesDict["controlling_button"]
@@ -798,7 +799,7 @@ class Plugin(indigo.PluginBase):
 
         indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
-    def delete_linked_devices(self, valuesDict, _typeId, _devId):
+    def delete_linked_devices(self, valuesDict: indigo.Dict, _typeId: str, _devId: int) -> None:
 
         for item in valuesDict["linkedDeviceList"]:
             self.logger.info(f"deleting device {item}")
@@ -807,13 +808,13 @@ class Plugin(indigo.PluginBase):
         self.log_linked_devices()
         indigo.activePlugin.pluginPrefs["linked_devices"] = json.dumps(self.linked_device_list)
 
-    def list_linked_devices(self, _filter, _valuesDict, _typeId, _targetId):
+    def list_linked_devices(self, _filter: str, _valuesDict: indigo.Dict, _typeId: str, _targetId: int) -> list[tuple[str, str]]:
         returnList = list()
         for linkID, linkItem in self.linked_device_list.items():
             returnList.append((linkID, linkItem["name"]))
         return sorted(returnList, key=lambda item: item[1])
 
-    def log_linked_devices(self):
+    def log_linked_devices(self) -> None:
         if len(self.linked_device_list) == 0:
             self.logger.info("No linked Devices")
             return
@@ -825,7 +826,7 @@ class Plugin(indigo.PluginBase):
 
     ########################################
 
-    async def create_devices_for_bridge(self, valuesDict):
+    async def create_devices_for_bridge(self, valuesDict: indigo.Dict) -> None:
 
         group_by = valuesDict["group_by"]
         rename_devices = bool(valuesDict["rename_devices"])
@@ -895,7 +896,7 @@ class Plugin(indigo.PluginBase):
         self.logger.info("Creating Devices done.")
         return
 
-    def create_leap_device(self, devType, name, address, props, group_by="None", rename_devices=False):
+    def create_leap_device(self, devType: str, name: str, address: str, props: dict[str, Any], group_by: str = "None", rename_devices: bool = False) -> Optional[indigo.Device]:
 
         self.logger.threaddebug(f"create_leap_device: devType = {devType}, name = {name}, address = {address}, props = {props}")
 
