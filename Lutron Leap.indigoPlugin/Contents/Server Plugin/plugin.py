@@ -601,10 +601,10 @@ class Plugin(indigo.PluginBase):
         self.logger.threaddebug(f"menuChanged: typeId = {typeId}, devId = {devId}, valuesDict = {valuesDict}")
         return valuesDict
 
-    def menuChangedConfig(self, valuesDict):
+    def menuChangedConfig(self, valuesDict, typeId, devId):
         self.logger.threaddebug(f"menuChangedConfig: valuesDict = {valuesDict}")
-        if data := self.found_bridges.get(valuesDict['found_list'], None):
-            valuesDict['address'] = data['ip_address']
+        if server := valuesDict.get('found_list'):
+            valuesDict['address'] = server
         return valuesDict
 
     ########################################
