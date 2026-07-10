@@ -1,0 +1,6 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/Lutron Leap.indigoPlugin/Contents/Server Plugin"
+    schedule:
+      interval: "weekly"
