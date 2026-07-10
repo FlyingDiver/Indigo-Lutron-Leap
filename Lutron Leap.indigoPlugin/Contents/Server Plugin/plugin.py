@@ -542,7 +542,7 @@ class Plugin(indigo.PluginBase):
 
     def get_scene_list(self, filter: str = "", valuesDict: Optional[indigo.Dict] = None, typeId: str = "", targetId: int = 0) -> list[tuple[str, str]]:
         self.logger.threaddebug(f"get_scene_list: typeId = {typeId}, targetId = {targetId}, filter = {filter}, valuesDict = {valuesDict}")
-        scenes = [(k, v['name']) for k, v in self.leap_scenes[targetId].items()]
+        scenes = [(k, v['name']) for k, v in self.leap_scenes.get(targetId, {}).items()]
         self.logger.threaddebug(f"get_scene_list: scenes = {scenes}")
         return scenes
 
@@ -564,9 +564,9 @@ class Plugin(indigo.PluginBase):
         bridge_id = int(valuesDict.get('bridge', targetId))
         buttons = []
         if bridge_id:
-            for button in self.leap_buttons[bridge_id].values():
+            for button in self.leap_buttons.get(bridge_id, {}).values():
                 address = f"{bridge_id}:{button['device_id']}"
-                parent_device = self.leap_known_devices[bridge_id].get(button.get('parent_device'))
+                parent_device = self.leap_known_devices.get(bridge_id, {}).get(button.get('parent_device'))
 
                 # build a full path name for the button, starting with the area (if defined)
                 name = ""
@@ -788,6 +788,9 @@ class Plugin(indigo.PluginBase):
     def menu_log_bridge_info(self, valuesDict: indigo.Dict, _typeId: str) -> bool:
         bridge_id = int(valuesDict["bridge"])
         self.logger.info(f"Bridge: {indigo.devices[bridge_id].name}")
+        if bridge_id not in self.leap_bridges or self.leap_bridges[bridge_id] is None:
+            self.logger.warning(f"menu_log_bridge_info: bridge {bridge_id} not connected yet")
+            return True
         self.logger.info(f"Devices:\n{json.dumps(self.leap_known_devices[bridge_id], sort_keys=True, indent=4)}")
         self.logger.info(f"Buttons:\n{json.dumps(self.leap_buttons[bridge_id], sort_keys=True, indent=4)}")
         self.logger.info(f"Scenes:\n{json.dumps(self.leap_scenes[bridge_id], sort_keys=True, indent=4)}")
@@ -860,7 +863,10 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"Creating Devices, Grouping = {group_by}")
 
         bridge_id = int(valuesDict["bridge"])
-        bridge = self.leap_bridges[bridge_id]
+        bridge = self.leap_bridges.get(bridge_id)
+        if not bridge:
+            self.logger.warning(f"create_devices_for_bridge: bridge {bridge_id} not connected yet")
+            return
 
         for device in bridge.get_devices().values():
             self.logger.debug(f"Working on device: {json.dumps(device, sort_keys=True, indent=4)}")
