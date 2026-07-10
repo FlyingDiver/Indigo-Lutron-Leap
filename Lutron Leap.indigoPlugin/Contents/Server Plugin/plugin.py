@@ -551,7 +551,7 @@ class Plugin(indigo.PluginBase):
 
         area = self.leap_areas[bridge_id].get(area_id)
         if not area.get("parent_id"):
-            return None
+            return area.get('name')
         else:
             if parent_path := self.get_area_path(area.get("parent_id"), bridge_id):
                 return f"{parent_path}/{area.get('name')}"
