@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import time
+import colorsys
 from datetime import timedelta
 import threading
 import asyncio
@@ -14,9 +15,14 @@ from typing import Any, Optional
 
 from pylutron_caseta import _LEAP_DEVICE_TYPES as LEAP_DEVICE_TYPES     # noqa
 from pylutron_caseta import RA3_OCCUPANCY_SENSOR_DEVICE_TYPES
+from pylutron_caseta.color_value import FullColorValue, WarmCoolColorValue
 from pylutron_caseta.pairing import async_pair
 from pylutron_caseta.smartbridge import Smartbridge
 from zeroconf import IPVersion, ServiceBrowser, ServiceStateChange, Zeroconf
+
+# LEAP device types (within LEAP_DEVICE_TYPES['light']) that support color/white-tuning
+COLOR_TUNABLE_LEAP_TYPES = ("SpectrumTune", "ColorTune")
+WHITE_TUNABLE_LEAP_TYPES = ("WhiteTune",)
 
 # Indigo Custom Device Types
 DEV_SWITCH = "leapSwitch"
@@ -361,9 +367,18 @@ class Plugin(indigo.PluginBase):
                 device.updateStateOnServer("onOffState", False)
             else:
                 device.updateStateOnServer("brightnessLevel", int(level))
-            self.logger.debug(f"{device.name}: Dimmer set to {level}%")
+            self.logger.debug(f"{device.name}: Color light set to {level}%")
 
-            # need to get the color value from the leap data
+            color = leap_data.get('color')
+            if isinstance(color, WarmCoolColorValue):
+                device.updateStateOnServer("whiteTemperature", int(color.kelvin))
+                self.logger.debug(f"{device.name}: White temperature set to {color.kelvin}K")
+            elif isinstance(color, FullColorValue):
+                red, green, blue = colorsys.hsv_to_rgb(color.hue / 360.0, color.saturation / 100.0, 1.0)
+                device.updateStateOnServer("redLevel", round(red * 100))
+                device.updateStateOnServer("greenLevel", round(green * 100))
+                device.updateStateOnServer("blueLevel", round(blue * 100))
+                self.logger.debug(f"{device.name}: Color set to hue={color.hue}, saturation={color.saturation}")
 
         elif device.deviceTypeId == DEV_FAN:
             fan_speed = leap_data['fan_speed']
@@ -715,12 +730,27 @@ class Plugin(indigo.PluginBase):
             self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], clamp(device.brightness - action.actionValue, 0, 100)))
 
         elif action.deviceAction == indigo.kDeviceAction.SetColorLevels:
+            leap_type = bridge.get_device_by_id(device.pluginProps["device"]).get("type")
 
             if device.supportsWhiteTemperature and 'whiteTemperature' in action.actionValue:
-                pass
+                if leap_type not in WHITE_TUNABLE_LEAP_TYPES:
+                    self.logger.warning(f"{device.name}: SetColorLevels: {leap_type} does not support white tuning")
+                else:
+                    kelvin = int(action.actionValue['whiteTemperature'])
+                    self.logger.debug(f"{device.name}: Setting white temperature to {kelvin}K")
+                    self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], color_value=WarmCoolColorValue(kelvin)))
 
-            elif device.supportsRGB and 'redLevel' in action.actionValue:
-                pass
+            elif device.supportsRGB and ('redLevel' in action.actionValue or 'greenLevel' in action.actionValue or 'blueLevel' in action.actionValue):
+                if leap_type not in COLOR_TUNABLE_LEAP_TYPES:
+                    self.logger.warning(f"{device.name}: SetColorLevels: {leap_type} does not support RGB color")
+                else:
+                    red = action.actionValue.get('redLevel', 0) / 100.0
+                    green = action.actionValue.get('greenLevel', 0) / 100.0
+                    blue = action.actionValue.get('blueLevel', 0) / 100.0
+                    hue, saturation, _value = colorsys.rgb_to_hsv(red, green, blue)
+                    self.logger.debug(f"{device.name}: Setting color to hue={hue * 360:.0f}, saturation={saturation * 100:.0f}")
+                    self.event_loop.create_task(bridge.set_value(
+                        device.pluginProps["device"], color_value=FullColorValue(int(hue * 360), int(saturation * 100))))
 
             else:
                 self.logger.debug(f"{device.name}: SetColorLevels, unsupported color change")
@@ -970,6 +1000,8 @@ class Plugin(indigo.PluginBase):
                 # Pico remotes, keypads, and standalone occupancy sensors have no other state to
                 # expose, but they do have a battery to monitor.
                 device_type = DEV_BATTERY
+            elif device['type'] in COLOR_TUNABLE_LEAP_TYPES or device['type'] in WHITE_TUNABLE_LEAP_TYPES:
+                device_type = DEV_COLOR
             elif device['type'] in LEAP_DEVICE_TYPES['light']:
                 device_type = DEV_DIMMER
             elif device['type'] in LEAP_DEVICE_TYPES['switch']:
@@ -1026,6 +1058,7 @@ class Plugin(indigo.PluginBase):
         folder_name_dict = {
             DEV_SWITCH: "Lutron Switches",
             DEV_DIMMER: "Lutron Dimmers",
+            DEV_COLOR: "Lutron Color Lights",
             DEV_FAN: "Lutron Fans",
             DEV_SHADE: "Lutron Shades",
             DEV_GROUP: "Lutron Occupancy Groups",
