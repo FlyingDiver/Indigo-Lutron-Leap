@@ -193,24 +193,13 @@ class Plugin(indigo.PluginBase):
             await self.poll_battery_device(device)
 
     async def poll_battery_device(self, device: indigo.Device) -> None:
-        bridge = self.leap_bridges.get(int(device.pluginProps["bridge"]))
+        bridge = self.get_connected_bridge(int(device.pluginProps["bridge"]), device.name, "poll_battery_device", level=logging.DEBUG)
         if not bridge:
-            self.logger.debug(f"{device.name}: poll_battery_device: bridge not found")
             return
 
-        try:
-            status = await bridge.get_battery_status(device.pluginProps["device"])
-        except BridgeDisconnectedError as e:
-            self.logger.debug(f"{device.name}: poll_battery_device: bridge disconnected: {e}")
-            return
-        except BridgeResponseError as e:
-            self.logger.debug(f"{device.name}: poll_battery_device: bridge rejected request ({e.code}): {e}")
-            return
-        except Exception as e:
-            self.logger.debug(f"{device.name}: poll_battery_device: failed to get battery status: {e}")
-            return
-
-        if status is not None:
+        success, status = await self.call_bridge(bridge.get_battery_status(device.pluginProps["device"]), device.name, "poll_battery_device",
+                                                   bridge_level=logging.DEBUG, other_level=logging.DEBUG)
+        if success and status is not None:
             device.updateStateOnServer("battery_status", status)
             self.logger.debug(f"{device.name}: Battery status set to {status}")
 
@@ -274,14 +263,11 @@ class Plugin(indigo.PluginBase):
         self.leap_bridges[indigo_bridge_dev.id] = bridge
 
         while True:
-            try:
-                await bridge.connect()
+            success, _ = await self.call_bridge(bridge.connect(), indigo_bridge_dev.name, "connect")
+            if success:
                 break
-            except BridgeDisconnectedError as e:
-                self.logger.warning(f"{indigo_bridge_dev.name}: bridge disconnected while connecting: {e}, retrying in {BRIDGE_CONNECT_RETRY_DELAY}s")
-            except BridgeResponseError as e:
-                self.logger.warning(f"{indigo_bridge_dev.name}: bridge rejected connection request ({e.code}): {e}, retrying in {BRIDGE_CONNECT_RETRY_DELAY}s")
             indigo_bridge_dev.updateStateOnServer('status', "Connect Failed")
+            self.logger.warning(f"{indigo_bridge_dev.name}: retrying connection in {BRIDGE_CONNECT_RETRY_DELAY}s")
             await asyncio.sleep(BRIDGE_CONNECT_RETRY_DELAY)
 
         indigo_bridge_dev.updateStateOnServer('status', "Connected")
@@ -305,15 +291,10 @@ class Plugin(indigo.PluginBase):
         self.populate_bridge_catalog(indigo_bridge_dev.id, indigo_bridge_dev.name, bridge, subscribe_buttons=True)
 
         bridge.add_smart_away_subscriber(lambda status: self.smart_away_event(indigo_bridge_dev.id, status))
-        try:
-            smart_away_status = await bridge.get_smart_away_status()
+        success, smart_away_status = await self.call_bridge(bridge.get_smart_away_status(), indigo_bridge_dev.name, "get_smart_away_status",
+                                                              bridge_level=logging.DEBUG, other_level=logging.DEBUG)
+        if success:
             indigo_bridge_dev.updateStateOnServer('smart_away_status', smart_away_status)
-        except BridgeDisconnectedError as e:
-            self.logger.debug(f"{indigo_bridge_dev.name}: bridge disconnected while reading Smart Away status: {e}")
-        except BridgeResponseError as e:
-            self.logger.debug(f"{indigo_bridge_dev.name}: Smart Away not supported ({e.code}): {e}")
-        except Exception as e:
-            self.logger.debug(f"{indigo_bridge_dev.name}: failed to read Smart Away status: {e}")
 
         # Devices and Groups will be done when the devices start up.
         self.logger.debug(f"{indigo_bridge_dev.name}: Notifying devices that connection is complete")
@@ -358,19 +339,31 @@ class Plugin(indigo.PluginBase):
         self.populate_bridge_catalog(bridge_id, bridge_name, bridge, subscribe_buttons=False)
         self.logger.info(f"{bridge_name}: cached devices/buttons/scenes/areas refreshed after reconnect")
 
+    def get_connected_bridge(self, bridge_key, entity_name: str, action_name: str, level: int = logging.WARNING) -> Optional[Smartbridge]:
+        """Look up a connected Smartbridge, logging a standard message if it's missing or still connecting."""
+        bridge = self.leap_bridges.get(bridge_key)
+        if not bridge:
+            self.logger.log(level, f"{entity_name}: {action_name}: bridge not found")
+        return bridge
+
+    async def call_bridge(self, coro, device_name: str, action_name: str,
+                           bridge_level: int = logging.WARNING, other_level: int = logging.ERROR) -> tuple[bool, Any]:
+        """Await a Smartbridge command, logging BridgeDisconnectedError/BridgeResponseError
+        distinctly from other failures. Returns (True, result) on success, (False, None) on
+        failure."""
+        try:
+            return True, await coro
+        except BridgeDisconnectedError as e:
+            self.logger.log(bridge_level, f"{device_name}: {action_name}: bridge disconnected: {e}")
+        except BridgeResponseError as e:
+            self.logger.log(bridge_level, f"{device_name}: {action_name}: bridge rejected request ({e.code}): {e}")
+        except Exception as e:
+            self.logger.log(other_level, f"{device_name}: {action_name}: unexpected error: {e}")
+        return False, None
+
     def create_bridge_task(self, coro, device_name: str, action_name: str) -> None:
         """Schedule a fire-and-forget Smartbridge command, logging bridge-specific failures distinctly."""
-        self.event_loop.create_task(self.run_bridge_command(coro, device_name, action_name))
-
-    async def run_bridge_command(self, coro, device_name: str, action_name: str) -> None:
-        try:
-            await coro
-        except BridgeDisconnectedError as e:
-            self.logger.warning(f"{device_name}: {action_name}: bridge disconnected: {e}")
-        except BridgeResponseError as e:
-            self.logger.warning(f"{device_name}: {action_name}: bridge rejected request ({e.code}): {e}")
-        except Exception as e:
-            self.logger.error(f"{device_name}: {action_name}: unexpected error: {e}")
+        self.event_loop.create_task(self.call_bridge(coro, device_name, action_name))
 
     def update_device_states(self, device: indigo.Device, data: dict[str, Any]) -> None:
         update_list = [
@@ -769,9 +762,8 @@ class Plugin(indigo.PluginBase):
     def actionControlDimmerRelay(self, action: indigo.PluginAction, device: indigo.Device) -> None:
         self.logger.threaddebug(f"{device.name}: actionControlDimmerRelay: action = {action}")
 
-        bridge = self.leap_bridges.get(device.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(device.pluginProps["bridge"], device.name, "actionControlDimmerRelay")
         if not bridge:
-            self.logger.warning(f"{device.name}: actionControlDimmerRelay: bridge not found")
             return
 
         if action.deviceAction == indigo.kDeviceAction.TurnOn:
@@ -839,9 +831,8 @@ class Plugin(indigo.PluginBase):
             self.logger.warning(f"{dev.name}: actionControlSpeedControl: not a leapFan device")
             return
 
-        bridge = self.leap_bridges.get(dev.pluginProps["bridge"], None)
+        bridge = self.get_connected_bridge(dev.pluginProps["bridge"], dev.name, "actionControlSpeedControl")
         if not bridge:
-            self.logger.warning(f"{dev.name}: actionControlSpeedControl: bridge not found")
             return
 
         if action.speedControlAction == indigo.kSpeedControlAction.TurnOn:
@@ -885,27 +876,24 @@ class Plugin(indigo.PluginBase):
 
     def activate_smart_away_action(self, _pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(bridge_dev.id)
+        bridge = self.get_connected_bridge(bridge_dev.id, bridge_dev.name, "activate_smart_away_action")
         if not bridge:
-            self.logger.warning(f"{bridge_dev.name}: activate_smart_away_action: bridge not found")
             return
         self.logger.debug(f"{bridge_dev.name}: Activating Smart Away")
         self.create_bridge_task(bridge.activate_smart_away(), bridge_dev.name, "activate_smart_away")
 
     def deactivate_smart_away_action(self, _pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(bridge_dev.id)
+        bridge = self.get_connected_bridge(bridge_dev.id, bridge_dev.name, "deactivate_smart_away_action")
         if not bridge:
-            self.logger.warning(f"{bridge_dev.name}: deactivate_smart_away_action: bridge not found")
             return
         self.logger.debug(f"{bridge_dev.name}: Deactivating Smart Away")
         self.create_bridge_task(bridge.deactivate_smart_away(), bridge_dev.name, "deactivate_smart_away")
 
     def activate_scene_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(bridge_dev.id)
+        bridge = self.get_connected_bridge(bridge_dev.id, bridge_dev.name, "activate_scene_action")
         if not bridge:
-            self.logger.warning(f"{bridge_dev.name}: activate_scene_action: bridge not found")
             return
         scene_id = pluginAction.props["scene_id"]
         self.logger.debug(f"{bridge_dev.name}: Activating scene {scene_id}")
@@ -913,9 +901,8 @@ class Plugin(indigo.PluginBase):
 
     def tap_button_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(bridge_dev.id)
+        bridge = self.get_connected_bridge(bridge_dev.id, bridge_dev.name, "tap_button_action")
         if not bridge:
-            self.logger.warning(f"{bridge_dev.name}: tap_button_action: bridge not found")
             return
         button_address = pluginAction.props["button_address"]
         self.logger.debug(f"{bridge_dev.name}: Tapping button {button_address}")
@@ -923,9 +910,8 @@ class Plugin(indigo.PluginBase):
 
     def fade_dimmer_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(dev.pluginProps["bridge"], dev.name, "fade_dimmer_action")
         if not bridge:
-            self.logger.warning(f"{dev.name}: fade_dimmer_action: bridge not found")
             return
         brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
         fadeTime = timedelta(seconds=float(indigo.activePlugin.substitute(pluginAction.props["fadeTime"])))
@@ -934,9 +920,8 @@ class Plugin(indigo.PluginBase):
 
     def set_warm_dim_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(dev.pluginProps["bridge"], dev.name, "set_warm_dim_action")
         if not bridge:
-            self.logger.warning(f"{dev.name}: set_warm_dim_action: bridge not found")
             return
 
         enabled = str(pluginAction.props.get("enabled", "true")).lower() == "true"
@@ -956,36 +941,32 @@ class Plugin(indigo.PluginBase):
 
     def start_raising_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(dev.pluginProps["bridge"], dev.name, "start_raising_action")
         if not bridge:
-            self.logger.warning(f"{dev.name}: start_raising_action: bridge not found")
             return
         self.logger.debug(f"{dev.name}: Raising")
         self.create_bridge_task(bridge.raise_cover(dev.pluginProps["device"]), dev.name, "start_raising")
 
     def start_lowering_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(dev.pluginProps["bridge"], dev.name, "start_lowering_action")
         if not bridge:
-            self.logger.warning(f"{dev.name}: start_lowering_action: bridge not found")
             return
         self.logger.debug(f"{dev.name}: Lowering")
         self.create_bridge_task(bridge.lower_cover(dev.pluginProps["device"]), dev.name, "start_lowering")
 
     def stop_shade_action(self, _pluginAction: indigo.PluginAction, device: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(device.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(device.pluginProps["bridge"], device.name, "stop_shade_action")
         if not bridge:
-            self.logger.warning(f"{device.name}: stop_shade_action: bridge not found")
             return
         self.logger.debug(f"{device.name}: Stopping")
         self.create_bridge_task(bridge.stop_cover(device.pluginProps["device"]), device.name, "stop_shade")
 
     def set_tilt_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(dev.pluginProps["bridge"], dev.name, "set_tilt_action")
         if not bridge:
-            self.logger.warning(f"{dev.name}: set_tilt_action: bridge not found")
             return
         tilt = float(indigo.activePlugin.substitute(pluginAction.props["tilt"]))
         self.logger.debug(f"{dev.name}: Tilting to {tilt}")
@@ -993,9 +974,8 @@ class Plugin(indigo.PluginBase):
 
     def set_fan_speed_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
-        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        bridge = self.get_connected_bridge(dev.pluginProps["bridge"], dev.name, "set_fan_speed_action")
         if not bridge:
-            self.logger.warning(f"{dev.name}: set_fan_speed_action: bridge not found")
             return
         fan_speed = pluginAction.props["fan_speed"]
         self.logger.debug(f"{dev.name}: Setting fan speed: {fan_speed}")
@@ -1081,9 +1061,8 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"Creating Devices, Grouping = {group_by}")
 
         bridge_id = int(valuesDict["bridge"])
-        bridge = self.leap_bridges.get(bridge_id)
+        bridge = self.get_connected_bridge(bridge_id, indigo.devices[bridge_id].name, "create_devices_for_bridge")
         if not bridge:
-            self.logger.warning(f"create_devices_for_bridge: bridge {bridge_id} not connected yet")
             return
 
         for device in bridge.get_devices().values():
