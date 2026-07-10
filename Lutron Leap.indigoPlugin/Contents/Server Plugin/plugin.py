@@ -35,6 +35,7 @@ DEV_BATTERY = "leapBattery"
 
 BATTERY_POLL_INTERVAL = 6 * 60 * 60  # seconds between battery status polls
 RECONNECT_REFRESH_DELAY = 10  # seconds to wait after a bridge reconnect before refreshing cached devices/buttons/scenes/areas
+BRIDGE_CONNECT_RETRY_DELAY = 30  # seconds to wait before retrying a failed initial bridge connection
 
 _FAN_SPEED_MAP: dict[int, str] = {
     0: "Off",
@@ -258,29 +259,31 @@ class Plugin(indigo.PluginBase):
 
         self.logger.debug(f"{indigo_bridge_dev.name}: Creating bridge at {indigo_bridge_dev.address}")
 
-        reconnected = False
-
+        # bridge_connected_events[id] is only ever set once the one-time initial setup below
+        # (populate_bridge_catalog + subscriptions + Smart Away status) has completed, so it
+        # doubles as the "has this bridge finished its first successful login" latch. Any
+        # on_bridge_connect firing before that point is either the still-in-progress initial
+        # connect (handled inline below) or a retry of a failed initial attempt (handled by the
+        # retry loop below) -- either way there's nothing to refresh yet.
         def on_bridge_connect() -> None:
-            nonlocal reconnected
-            if not reconnected:
-                # the very first connect is handled inline below, once login/device-load has finished
-                reconnected = True
-                return
-            self.event_loop.create_task(self.refresh_bridge_catalog(indigo_bridge_dev.id, bridge))
+            if self.bridge_connected_events[indigo_bridge_dev.id].is_set():
+                self.event_loop.create_task(self.refresh_bridge_catalog(indigo_bridge_dev.id, bridge))
 
         bridge = Smartbridge.create_tls(indigo_bridge_dev.address, f"{path}.key", f"{path}.crt", f"{path}-CA.crt",
                                          on_connect_callback=on_bridge_connect)
         self.leap_bridges[indigo_bridge_dev.id] = bridge
-        try:
-            await bridge.connect()
-        except BridgeDisconnectedError as e:
-            self.logger.warning(f"{indigo_bridge_dev.name}: bridge disconnected while connecting: {e}")
+
+        while True:
+            try:
+                await bridge.connect()
+                break
+            except BridgeDisconnectedError as e:
+                self.logger.warning(f"{indigo_bridge_dev.name}: bridge disconnected while connecting: {e}, retrying in {BRIDGE_CONNECT_RETRY_DELAY}s")
+            except BridgeResponseError as e:
+                self.logger.warning(f"{indigo_bridge_dev.name}: bridge rejected connection request ({e.code}): {e}, retrying in {BRIDGE_CONNECT_RETRY_DELAY}s")
             indigo_bridge_dev.updateStateOnServer('status', "Connect Failed")
-            return
-        except BridgeResponseError as e:
-            self.logger.warning(f"{indigo_bridge_dev.name}: bridge rejected connection request ({e.code}): {e}")
-            indigo_bridge_dev.updateStateOnServer('status', "Connect Failed")
-            return
+            await asyncio.sleep(BRIDGE_CONNECT_RETRY_DELAY)
+
         indigo_bridge_dev.updateStateOnServer('status', "Connected")
         self.logger.info(f"{indigo_bridge_dev.name}: Bridge Connected")
 
@@ -795,7 +798,11 @@ class Plugin(indigo.PluginBase):
                 bridge.set_value(device.pluginProps["device"], clamp(device.brightness - action.actionValue, 0, 100)), device.name, "dim_by")
 
         elif action.deviceAction == indigo.kDeviceAction.SetColorLevels:
-            leap_type = bridge.get_device_by_id(device.pluginProps["device"]).get("type")
+            leap_device = bridge.devices.get(device.pluginProps["device"])
+            if not leap_device:
+                self.logger.warning(f"{device.name}: SetColorLevels: device not found on bridge")
+                return
+            leap_type = leap_device.get("type")
 
             if device.supportsWhiteTemperature and 'whiteTemperature' in action.actionValue:
                 if leap_type not in WHITE_TUNABLE_LEAP_TYPES:
@@ -999,7 +1006,7 @@ class Plugin(indigo.PluginBase):
     def menu_log_bridge_info(self, valuesDict: indigo.Dict, _typeId: str) -> bool:
         bridge_id = int(valuesDict["bridge"])
         self.logger.info(f"Bridge: {indigo.devices[bridge_id].name}")
-        if bridge_id not in self.leap_bridges or self.leap_bridges[bridge_id] is None:
+        if bridge_id not in self.leap_known_devices:
             self.logger.warning(f"menu_log_bridge_info: bridge {bridge_id} not connected yet")
             return True
         self.logger.info(f"Devices:\n{json.dumps(self.leap_known_devices[bridge_id], sort_keys=True, indent=4)}")
