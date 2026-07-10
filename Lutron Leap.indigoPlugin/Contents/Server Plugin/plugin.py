@@ -34,6 +34,7 @@ DEV_COLOR  = "leapColor"
 DEV_BATTERY = "leapBattery"
 
 BATTERY_POLL_INTERVAL = 6 * 60 * 60  # seconds between battery status polls
+RECONNECT_REFRESH_DELAY = 10  # seconds to wait after a bridge reconnect before refreshing cached devices/buttons/scenes/areas
 
 _FAN_SPEED_MAP: dict[int, str] = {
     0: "Off",
@@ -256,7 +257,19 @@ class Plugin(indigo.PluginBase):
             return
 
         self.logger.debug(f"{indigo_bridge_dev.name}: Creating bridge at {indigo_bridge_dev.address}")
-        bridge = Smartbridge.create_tls(indigo_bridge_dev.address, f"{path}.key", f"{path}.crt", f"{path}-CA.crt")
+
+        reconnected = False
+
+        def on_bridge_connect() -> None:
+            nonlocal reconnected
+            if not reconnected:
+                # the very first connect is handled inline below, once login/device-load has finished
+                reconnected = True
+                return
+            self.event_loop.create_task(self.refresh_bridge_catalog(indigo_bridge_dev.id, bridge))
+
+        bridge = Smartbridge.create_tls(indigo_bridge_dev.address, f"{path}.key", f"{path}.crt", f"{path}-CA.crt",
+                                         on_connect_callback=on_bridge_connect)
         self.leap_bridges[indigo_bridge_dev.id] = bridge
         try:
             await bridge.connect()
@@ -285,35 +298,8 @@ class Plugin(indigo.PluginBase):
         except Exception as e:
             self.logger.error(f"{indigo_bridge_dev.name}: failed to update states: {e}")
 
-        self.leap_known_devices[indigo_bridge_dev.id] = {}
-        for device in bridge.get_devices().values():
-            self.logger.threaddebug(f"{indigo_bridge_dev.name}: Found Device: {device['name']} ({device['device_id']}) - {device['type']} ({device['model']})")
-            self.leap_known_devices[indigo_bridge_dev.id][device['device_id']] = device
-
-        self.leap_known_groups[indigo_bridge_dev.id] = {}
-        for group in bridge.occupancy_groups.values():
-            self.logger.threaddebug(f"{indigo_bridge_dev.name}: Found Group: {group['name']} - {group}")
-            self.leap_known_groups[indigo_bridge_dev.id][group['occupancy_group_id']] = group
-
         # Button, Scene, and Area lists are populated here, since there are no Indigo devices to start.
-
-        self.leap_buttons[indigo_bridge_dev.id] = {}
-        for button in bridge.get_buttons().values():
-            self.logger.threaddebug(f"{indigo_bridge_dev.name}: Found Button: {button['name']} ({button['parent_device']}) - {button['device_id']}")
-            self.leap_buttons[indigo_bridge_dev.id][button['device_id']] = button
-            bridge.add_button_subscriber(button['device_id'],
-                                        lambda event_type, button_device=button['parent_device'], button_id=button['device_id']: self.button_event(
-                                             indigo_bridge_dev.id, button_device, button_id, event_type))
-
-        self.leap_scenes[indigo_bridge_dev.id] = {}
-        for scene in bridge.get_scenes().values():
-            self.logger.threaddebug(f"{indigo_bridge_dev.name}: Found Scene: {scene['name']} - {scene['scene_id']}")
-            self.leap_scenes[indigo_bridge_dev.id][scene['scene_id']] = scene
-
-        self.leap_areas[indigo_bridge_dev.id] = {}
-        for area in bridge.areas.values():
-            self.logger.threaddebug(f"{indigo_bridge_dev.name}: Found Area: {area}")
-            self.leap_areas[indigo_bridge_dev.id][area['id']] = area
+        self.populate_bridge_catalog(indigo_bridge_dev.id, indigo_bridge_dev.name, bridge, subscribe_buttons=True)
 
         bridge.add_smart_away_subscriber(lambda status: self.smart_away_event(indigo_bridge_dev.id, status))
         try:
@@ -329,6 +315,45 @@ class Plugin(indigo.PluginBase):
         # Devices and Groups will be done when the devices start up.
         self.logger.debug(f"{indigo_bridge_dev.name}: Notifying devices that connection is complete")
         self.bridge_connected_events[indigo_bridge_dev.id].set()
+
+    def populate_bridge_catalog(self, bridge_id: int, bridge_name: str, bridge: Smartbridge, subscribe_buttons: bool) -> None:
+        self.leap_known_devices[bridge_id] = {}
+        for device in bridge.get_devices().values():
+            self.logger.threaddebug(f"{bridge_name}: Found Device: {device['name']} ({device['device_id']}) - {device['type']} ({device['model']})")
+            self.leap_known_devices[bridge_id][device['device_id']] = device
+
+        self.leap_known_groups[bridge_id] = {}
+        for group in bridge.occupancy_groups.values():
+            self.logger.threaddebug(f"{bridge_name}: Found Group: {group['name']} - {group}")
+            self.leap_known_groups[bridge_id][group['occupancy_group_id']] = group
+
+        self.leap_buttons[bridge_id] = {}
+        for button in bridge.get_buttons().values():
+            self.logger.threaddebug(f"{bridge_name}: Found Button: {button['name']} ({button['parent_device']}) - {button['device_id']}")
+            self.leap_buttons[bridge_id][button['device_id']] = button
+            if subscribe_buttons:
+                bridge.add_button_subscriber(button['device_id'],
+                                            lambda event_type, button_device=button['parent_device'], button_id=button['device_id']: self.button_event(
+                                                 bridge_id, button_device, button_id, event_type))
+
+        self.leap_scenes[bridge_id] = {}
+        for scene in bridge.get_scenes().values():
+            self.logger.threaddebug(f"{bridge_name}: Found Scene: {scene['name']} - {scene['scene_id']}")
+            self.leap_scenes[bridge_id][scene['scene_id']] = scene
+
+        self.leap_areas[bridge_id] = {}
+        for area in bridge.areas.values():
+            self.logger.threaddebug(f"{bridge_name}: Found Area: {area}")
+            self.leap_areas[bridge_id][area['id']] = area
+
+    async def refresh_bridge_catalog(self, bridge_id: int, bridge: Smartbridge) -> None:
+        bridge_name = indigo.devices[bridge_id].name
+        self.logger.debug(f"{bridge_name}: bridge reconnected, waiting {RECONNECT_REFRESH_DELAY}s before refreshing cached devices/buttons/scenes/areas")
+        # subscriptions persist on the Smartbridge instance across reconnects, so no need to re-subscribe here;
+        # button/occupancy/smart-away subscribers registered at initial connect remain valid.
+        await asyncio.sleep(RECONNECT_REFRESH_DELAY)
+        self.populate_bridge_catalog(bridge_id, bridge_name, bridge, subscribe_buttons=False)
+        self.logger.info(f"{bridge_name}: cached devices/buttons/scenes/areas refreshed after reconnect")
 
     def create_bridge_task(self, coro, device_name: str, action_name: str) -> None:
         """Schedule a fire-and-forget Smartbridge command, logging bridge-specific failures distinctly."""
