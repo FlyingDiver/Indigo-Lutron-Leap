@@ -1,0 +1,23 @@
+name: Issue assignment
+
+on:
+    issues:
+        types: [opened]
+
+jobs:
+    auto-assign:
+        runs-on: ubuntu-latest
+        permissions:
+            issues: write
+        steps:
+            - name: 'Auto-assign issue'
+              uses: actions/github-script@v8
+              with:
+                  script: |
+                      await github.rest.issues.addAssignees({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                          assignees: ['FlyingDiver']
+                      })
+            
