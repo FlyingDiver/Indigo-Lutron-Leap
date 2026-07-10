@@ -14,7 +14,7 @@ import queue
 from typing import Any, Optional
 
 from pylutron_caseta import _LEAP_DEVICE_TYPES as LEAP_DEVICE_TYPES     # noqa
-from pylutron_caseta import RA3_OCCUPANCY_SENSOR_DEVICE_TYPES
+from pylutron_caseta import RA3_OCCUPANCY_SENSOR_DEVICE_TYPES, BridgeDisconnectedError, BridgeResponseError
 from pylutron_caseta.color_value import FullColorValue, WarmCoolColorValue
 from pylutron_caseta.pairing import async_pair
 from pylutron_caseta.smartbridge import Smartbridge
@@ -198,6 +198,12 @@ class Plugin(indigo.PluginBase):
 
         try:
             status = await bridge.get_battery_status(device.pluginProps["device"])
+        except BridgeDisconnectedError as e:
+            self.logger.debug(f"{device.name}: poll_battery_device: bridge disconnected: {e}")
+            return
+        except BridgeResponseError as e:
+            self.logger.debug(f"{device.name}: poll_battery_device: bridge rejected request ({e.code}): {e}")
+            return
         except Exception as e:
             self.logger.debug(f"{device.name}: poll_battery_device: failed to get battery status: {e}")
             return
@@ -252,7 +258,16 @@ class Plugin(indigo.PluginBase):
         self.logger.debug(f"{indigo_bridge_dev.name}: Creating bridge at {indigo_bridge_dev.address}")
         bridge = Smartbridge.create_tls(indigo_bridge_dev.address, f"{path}.key", f"{path}.crt", f"{path}-CA.crt")
         self.leap_bridges[indigo_bridge_dev.id] = bridge
-        await bridge.connect()
+        try:
+            await bridge.connect()
+        except BridgeDisconnectedError as e:
+            self.logger.warning(f"{indigo_bridge_dev.name}: bridge disconnected while connecting: {e}")
+            indigo_bridge_dev.updateStateOnServer('status', "Connect Failed")
+            return
+        except BridgeResponseError as e:
+            self.logger.warning(f"{indigo_bridge_dev.name}: bridge rejected connection request ({e.code}): {e}")
+            indigo_bridge_dev.updateStateOnServer('status', "Connect Failed")
+            return
         indigo_bridge_dev.updateStateOnServer('status', "Connected")
         self.logger.info(f"{indigo_bridge_dev.name}: Bridge Connected")
 
@@ -304,12 +319,30 @@ class Plugin(indigo.PluginBase):
         try:
             smart_away_status = await bridge.get_smart_away_status()
             indigo_bridge_dev.updateStateOnServer('smart_away_status', smart_away_status)
+        except BridgeDisconnectedError as e:
+            self.logger.debug(f"{indigo_bridge_dev.name}: bridge disconnected while reading Smart Away status: {e}")
+        except BridgeResponseError as e:
+            self.logger.debug(f"{indigo_bridge_dev.name}: Smart Away not supported ({e.code}): {e}")
         except Exception as e:
-            self.logger.debug(f"{indigo_bridge_dev.name}: Smart Away not supported or failed to read status: {e}")
+            self.logger.debug(f"{indigo_bridge_dev.name}: failed to read Smart Away status: {e}")
 
         # Devices and Groups will be done when the devices start up.
         self.logger.debug(f"{indigo_bridge_dev.name}: Notifying devices that connection is complete")
         self.bridge_connected_events[indigo_bridge_dev.id].set()
+
+    def create_bridge_task(self, coro, device_name: str, action_name: str) -> None:
+        """Schedule a fire-and-forget Smartbridge command, logging bridge-specific failures distinctly."""
+        self.event_loop.create_task(self.run_bridge_command(coro, device_name, action_name))
+
+    async def run_bridge_command(self, coro, device_name: str, action_name: str) -> None:
+        try:
+            await coro
+        except BridgeDisconnectedError as e:
+            self.logger.warning(f"{device_name}: {action_name}: bridge disconnected: {e}")
+        except BridgeResponseError as e:
+            self.logger.warning(f"{device_name}: {action_name}: bridge rejected request ({e.code}): {e}")
+        except Exception as e:
+            self.logger.error(f"{device_name}: {action_name}: unexpected error: {e}")
 
     def update_device_states(self, device: indigo.Device, data: dict[str, Any]) -> None:
         update_list = [
@@ -709,25 +742,27 @@ class Plugin(indigo.PluginBase):
             return
 
         if action.deviceAction == indigo.kDeviceAction.TurnOn:
-            self.event_loop.create_task(bridge.turn_on(device.pluginProps["device"]))
+            self.create_bridge_task(bridge.turn_on(device.pluginProps["device"]), device.name, "turn_on")
 
         elif action.deviceAction == indigo.kDeviceAction.TurnOff:
-            self.event_loop.create_task(bridge.turn_off(device.pluginProps["device"]))
+            self.create_bridge_task(bridge.turn_off(device.pluginProps["device"]), device.name, "turn_off")
 
         elif action.deviceAction == indigo.kDeviceAction.Toggle:
             if device.onState:
-                self.event_loop.create_task(bridge.turn_off(device.pluginProps["device"]))
+                self.create_bridge_task(bridge.turn_off(device.pluginProps["device"]), device.name, "toggle (off)")
             else:
-                self.event_loop.create_task(bridge.turn_on(device.pluginProps["device"]))
+                self.create_bridge_task(bridge.turn_on(device.pluginProps["device"]), device.name, "toggle (on)")
 
         elif action.deviceAction == indigo.kDeviceAction.SetBrightness:
-            self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], clamp(action.actionValue, 0, 100)))
+            self.create_bridge_task(bridge.set_value(device.pluginProps["device"], clamp(action.actionValue, 0, 100)), device.name, "set_brightness")
 
         elif action.deviceAction == indigo.kDimmerRelayAction.BrightenBy:
-            self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], clamp(device.brightness + action.actionValue, 0, 100)))
+            self.create_bridge_task(
+                bridge.set_value(device.pluginProps["device"], clamp(device.brightness + action.actionValue, 0, 100)), device.name, "brighten_by")
 
         elif action.deviceAction == indigo.kDimmerRelayAction.DimBy:
-            self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], clamp(device.brightness - action.actionValue, 0, 100)))
+            self.create_bridge_task(
+                bridge.set_value(device.pluginProps["device"], clamp(device.brightness - action.actionValue, 0, 100)), device.name, "dim_by")
 
         elif action.deviceAction == indigo.kDeviceAction.SetColorLevels:
             leap_type = bridge.get_device_by_id(device.pluginProps["device"]).get("type")
@@ -738,7 +773,8 @@ class Plugin(indigo.PluginBase):
                 else:
                     kelvin = int(action.actionValue['whiteTemperature'])
                     self.logger.debug(f"{device.name}: Setting white temperature to {kelvin}K")
-                    self.event_loop.create_task(bridge.set_value(device.pluginProps["device"], color_value=WarmCoolColorValue(kelvin)))
+                    self.create_bridge_task(
+                        bridge.set_value(device.pluginProps["device"], color_value=WarmCoolColorValue(kelvin)), device.name, "set_white_temperature")
 
             elif device.supportsRGB and ('redLevel' in action.actionValue or 'greenLevel' in action.actionValue or 'blueLevel' in action.actionValue):
                 if leap_type not in COLOR_TUNABLE_LEAP_TYPES:
@@ -749,8 +785,9 @@ class Plugin(indigo.PluginBase):
                     blue = action.actionValue.get('blueLevel', 0) / 100.0
                     hue, saturation, _value = colorsys.rgb_to_hsv(red, green, blue)
                     self.logger.debug(f"{device.name}: Setting color to hue={hue * 360:.0f}, saturation={saturation * 100:.0f}")
-                    self.event_loop.create_task(bridge.set_value(
-                        device.pluginProps["device"], color_value=FullColorValue(int(hue * 360), int(saturation * 100))))
+                    self.create_bridge_task(
+                        bridge.set_value(device.pluginProps["device"], color_value=FullColorValue(int(hue * 360), int(saturation * 100))),
+                        device.name, "set_color")
 
             else:
                 self.logger.debug(f"{device.name}: SetColorLevels, unsupported color change")
@@ -772,38 +809,38 @@ class Plugin(indigo.PluginBase):
 
         if action.speedControlAction == indigo.kSpeedControlAction.TurnOn:
             last_speed = dev.pluginProps.get("last_speed", "Medium")
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], last_speed))
+            self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], last_speed), dev.name, "fan_turn_on")
 
         elif action.speedControlAction == indigo.kSpeedControlAction.TurnOff:
             newProps = dev.pluginProps
             newProps['last_speed'] = dev.states['fan_speed']    # save the last speed
             dev.replacePluginPropsOnServer(newProps)
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Off"))
+            self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], "Off"), dev.name, "fan_turn_off")
 
         elif action.speedControlAction == indigo.kSpeedControlAction.Toggle:
             if dev.onState:
                 newProps = dev.pluginProps
                 newProps['last_speed'] = dev.states['fan_speed']    # save the last speed
                 dev.replacePluginPropsOnServer(newProps)
-                self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], "Off"))
+                self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], "Off"), dev.name, "fan_toggle (off)")
             else:
                 last_speed = dev.pluginProps.get("last_speed", "Medium")
-                self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], last_speed))
+                self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], last_speed), dev.name, "fan_toggle (on)")
 
         elif action.speedControlAction == indigo.kSpeedControlAction.SetSpeedIndex:
             speed = _FAN_SPEED_MAP.get(action.actionValue, "Medium")
             self.logger.debug(f"{dev.name}: SetSpeedIndex to {action.actionValue}, speed = {speed}")
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], speed))
+            self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], speed), dev.name, "set_speed_index")
 
         elif action.speedControlAction == indigo.kSpeedControlAction.IncreaseSpeedIndex:
             speed = _FAN_SPEED_MAP.get(min(dev.speedIndex + action.actionValue, 3))
             self.logger.debug(f"{dev.name}: IncreaseSpeedIndex by {action.actionValue}, speed = {speed}")
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], speed))
+            self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], speed), dev.name, "increase_speed_index")
 
         elif action.speedControlAction == indigo.kSpeedControlAction.DecreaseSpeedIndex:
             speed = _FAN_SPEED_MAP.get(max(dev.speedIndex - action.actionValue, 0))
             self.logger.debug(f"{dev.name}: DecreaseSpeedIndex by {action.actionValue}, speed = {speed}")
-            self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], speed))
+            self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], speed), dev.name, "decrease_speed_index")
 
     ########################################
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
@@ -816,7 +853,7 @@ class Plugin(indigo.PluginBase):
             self.logger.warning(f"{bridge_dev.name}: activate_smart_away_action: bridge not found")
             return
         self.logger.debug(f"{bridge_dev.name}: Activating Smart Away")
-        self.event_loop.create_task(bridge.activate_smart_away())
+        self.create_bridge_task(bridge.activate_smart_away(), bridge_dev.name, "activate_smart_away")
 
     def deactivate_smart_away_action(self, _pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
@@ -825,7 +862,7 @@ class Plugin(indigo.PluginBase):
             self.logger.warning(f"{bridge_dev.name}: deactivate_smart_away_action: bridge not found")
             return
         self.logger.debug(f"{bridge_dev.name}: Deactivating Smart Away")
-        self.event_loop.create_task(bridge.deactivate_smart_away())
+        self.create_bridge_task(bridge.deactivate_smart_away(), bridge_dev.name, "deactivate_smart_away")
 
     def activate_scene_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
@@ -835,7 +872,7 @@ class Plugin(indigo.PluginBase):
             return
         scene_id = pluginAction.props["scene_id"]
         self.logger.debug(f"{bridge_dev.name}: Activating scene {scene_id}")
-        self.event_loop.create_task(bridge.activate_scene(scene_id))
+        self.create_bridge_task(bridge.activate_scene(scene_id), bridge_dev.name, "activate_scene")
 
     def tap_button_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 
@@ -845,7 +882,7 @@ class Plugin(indigo.PluginBase):
             return
         button_address = pluginAction.props["button_address"]
         self.logger.debug(f"{bridge_dev.name}: Tapping button {button_address}")
-        self.event_loop.create_task(bridge.tap_button(button_address.split(":")[1]))
+        self.create_bridge_task(bridge.tap_button(button_address.split(":")[1]), bridge_dev.name, "tap_button")
 
     def fade_dimmer_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
@@ -856,7 +893,7 @@ class Plugin(indigo.PluginBase):
         brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
         fadeTime = timedelta(seconds=float(indigo.activePlugin.substitute(pluginAction.props["fadeTime"])))
         self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
-        self.event_loop.create_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime))
+        self.create_bridge_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime), dev.name, "fade_dimmer")
 
     def start_raising_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
@@ -865,7 +902,7 @@ class Plugin(indigo.PluginBase):
             self.logger.warning(f"{dev.name}: start_raising_action: bridge not found")
             return
         self.logger.debug(f"{dev.name}: Raising")
-        self.event_loop.create_task(bridge.raise_cover(dev.pluginProps["device"]))
+        self.create_bridge_task(bridge.raise_cover(dev.pluginProps["device"]), dev.name, "start_raising")
 
     def start_lowering_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
@@ -874,7 +911,7 @@ class Plugin(indigo.PluginBase):
             self.logger.warning(f"{dev.name}: start_lowering_action: bridge not found")
             return
         self.logger.debug(f"{dev.name}: Lowering")
-        self.event_loop.create_task(bridge.lower_cover(dev.pluginProps["device"]))
+        self.create_bridge_task(bridge.lower_cover(dev.pluginProps["device"]), dev.name, "start_lowering")
 
     def stop_shade_action(self, _pluginAction: indigo.PluginAction, device: indigo.Device) -> None:
 
@@ -883,7 +920,7 @@ class Plugin(indigo.PluginBase):
             self.logger.warning(f"{device.name}: stop_shade_action: bridge not found")
             return
         self.logger.debug(f"{device.name}: Stopping")
-        self.event_loop.create_task(bridge.stop_cover(device.pluginProps["device"]))
+        self.create_bridge_task(bridge.stop_cover(device.pluginProps["device"]), device.name, "stop_shade")
 
     def set_tilt_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
@@ -893,7 +930,7 @@ class Plugin(indigo.PluginBase):
             return
         tilt = float(indigo.activePlugin.substitute(pluginAction.props["tilt"]))
         self.logger.debug(f"{dev.name}: Tilting to {tilt}")
-        self.event_loop.create_task(bridge.set_tilt(dev.pluginProps["device"], tilt))
+        self.create_bridge_task(bridge.set_tilt(dev.pluginProps["device"], tilt), dev.name, "set_tilt")
 
     def set_fan_speed_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
@@ -903,7 +940,7 @@ class Plugin(indigo.PluginBase):
             return
         fan_speed = pluginAction.props["fan_speed"]
         self.logger.debug(f"{dev.name}: Setting fan speed: {fan_speed}")
-        self.event_loop.create_task(bridge.set_fan(dev.pluginProps["device"], fan_speed))
+        self.create_bridge_task(bridge.set_fan(dev.pluginProps["device"], fan_speed), dev.name, "set_fan_speed")
 
     ########################################
 
