@@ -413,6 +413,11 @@ class Plugin(indigo.PluginBase):
                 device.updateStateOnServer("blueLevel", round(blue * 100))
                 self.logger.debug(f"{device.name}: Color set to hue={color.hue}, saturation={color.saturation}")
 
+            warm_dim = leap_data.get('warm_dim')
+            if warm_dim is not None:
+                device.updateStateOnServer("warm_dim", warm_dim)
+                self.logger.debug(f"{device.name}: Warm dim set to {warm_dim}")
+
         elif device.deviceTypeId == DEV_FAN:
             fan_speed = leap_data['fan_speed']
             if fan_speed == "Off":
@@ -894,6 +899,28 @@ class Plugin(indigo.PluginBase):
         fadeTime = timedelta(seconds=float(indigo.activePlugin.substitute(pluginAction.props["fadeTime"])))
         self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
         self.create_bridge_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime), dev.name, "fade_dimmer")
+
+    def set_warm_dim_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
+
+        bridge = self.leap_bridges.get(dev.pluginProps["bridge"])
+        if not bridge:
+            self.logger.warning(f"{dev.name}: set_warm_dim_action: bridge not found")
+            return
+
+        enabled = str(pluginAction.props.get("enabled", "true")).lower() == "true"
+
+        value = None
+        brightness_str = indigo.activePlugin.substitute(pluginAction.props.get("brightness", ""))
+        if brightness_str:
+            value = int(float(brightness_str))
+
+        fade_time = None
+        fade_time_str = indigo.activePlugin.substitute(pluginAction.props.get("fadeTime", ""))
+        if fade_time_str:
+            fade_time = timedelta(seconds=float(fade_time_str))
+
+        self.logger.debug(f"{dev.name}: Setting warm dim: enabled={enabled}, value={value}, fade_time={fade_time}")
+        self.create_bridge_task(bridge.set_warm_dim(dev.pluginProps["device"], enabled, value, fade_time), dev.name, "set_warm_dim")
 
     def start_raising_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
 
