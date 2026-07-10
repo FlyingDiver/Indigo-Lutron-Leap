@@ -919,7 +919,7 @@ class Plugin(indigo.PluginBase):
             return
         brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
         fadeTime = timedelta(seconds=float(indigo.activePlugin.substitute(pluginAction.props["fadeTime"])))
-        self.logger.debug(f"{dev.name}: Fading to {brightness} over {str(fadeTime)}")
+        self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime.total_seconds()}s")
         self.create_bridge_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime), dev.name, "fade_dimmer")
 
     def set_warm_dim_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
@@ -940,7 +940,8 @@ class Plugin(indigo.PluginBase):
         if fade_time_str:
             fade_time = timedelta(seconds=float(fade_time_str))
 
-        self.logger.debug(f"{dev.name}: Setting warm dim: enabled={enabled}, value={value}, fade_time={str(fade_time)}")
+        fade_time_seconds = f"{fade_time.total_seconds()}s" if fade_time is not None else None
+        self.logger.debug(f"{dev.name}: Setting warm dim: enabled={enabled}, value={value}, fade_time={fade_time_seconds}")
         self.create_bridge_task(bridge.set_warm_dim(dev.pluginProps["device"], enabled, value, fade_time), dev.name, "set_warm_dim")
 
     def start_raising_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
