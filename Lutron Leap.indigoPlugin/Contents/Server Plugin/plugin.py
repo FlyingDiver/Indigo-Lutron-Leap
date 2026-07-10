@@ -750,7 +750,7 @@ class Plugin(indigo.PluginBase):
         self.logger.threaddebug(f"menuChanged: typeId = {typeId}, devId = {devId}, valuesDict = {valuesDict}")
         return valuesDict
 
-    def menuChangedConfig(self, valuesDict: indigo.Dict, typeId: str, devId: int) -> indigo.Dict:
+    def menuChangedConfig(self, valuesDict: indigo.Dict, _typeId: str, _devId: int) -> indigo.Dict:
         self.logger.threaddebug(f"menuChangedConfig: valuesDict = {valuesDict}")
         if server := valuesDict.get('found_list'):
             valuesDict['address'] = server
@@ -915,7 +915,7 @@ class Plugin(indigo.PluginBase):
             return
         brightness = float(indigo.activePlugin.substitute(pluginAction.props["brightness"]))
         fadeTime = timedelta(seconds=float(indigo.activePlugin.substitute(pluginAction.props["fadeTime"])))
-        self.logger.debug(f"{dev.name}: Fading to {brightness} over {fadeTime}")
+        self.logger.debug(f"{dev.name}: Fading to {brightness} over {str(fadeTime)}")
         self.create_bridge_task(bridge.set_value(dev.pluginProps["device"], brightness, fadeTime), dev.name, "fade_dimmer")
 
     def set_warm_dim_action(self, pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
@@ -936,7 +936,7 @@ class Plugin(indigo.PluginBase):
         if fade_time_str:
             fade_time = timedelta(seconds=float(fade_time_str))
 
-        self.logger.debug(f"{dev.name}: Setting warm dim: enabled={enabled}, value={value}, fade_time={fade_time}")
+        self.logger.debug(f"{dev.name}: Setting warm dim: enabled={enabled}, value={value}, fade_time={str(fade_time)}")
         self.create_bridge_task(bridge.set_warm_dim(dev.pluginProps["device"], enabled, value, fade_time), dev.name, "set_warm_dim")
 
     def start_raising_action(self, _pluginAction: indigo.PluginAction, dev: indigo.Device) -> None:
