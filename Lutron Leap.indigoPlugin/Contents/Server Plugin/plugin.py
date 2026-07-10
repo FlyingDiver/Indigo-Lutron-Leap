@@ -25,6 +25,9 @@ DEV_SHADE  = "leapShade"
 DEV_FAN    = "leapFan"
 DEV_GROUP  = "occupancy_group"
 DEV_COLOR  = "leapColor"
+DEV_BATTERY = "leapBattery"
+
+BATTERY_POLL_INTERVAL = 6 * 60 * 60  # seconds between battery status polls
 
 _FAN_SPEED_MAP: dict[int, str] = {
     0: "Off",
@@ -152,6 +155,8 @@ class Plugin(indigo.PluginBase):
     async def async_main(self) -> None:
         self.logger.debug("async_main starting")
 
+        asyncio.create_task(self.battery_status_loop())
+
         while True:
             await asyncio.sleep(0.1)
             await self.buttonMultiPressCheck()
@@ -159,6 +164,41 @@ class Plugin(indigo.PluginBase):
                 self.logger.debug("async_main: stopping")
                 break
         self.logger.debug("async_main: exiting")
+
+    async def battery_status_loop(self) -> None:
+        self.logger.debug("battery_status_loop starting")
+
+        while not self.stopThread:
+            await self.poll_battery_status()
+
+            for _ in range(BATTERY_POLL_INTERVAL // 60):
+                if self.stopThread:
+                    break
+                await asyncio.sleep(60)
+
+        self.logger.debug("battery_status_loop exiting")
+
+    async def poll_battery_status(self) -> None:
+        for device in indigo.devices.iter("self"):
+            if device.deviceTypeId != DEV_BATTERY:
+                continue
+            await self.poll_battery_device(device)
+
+    async def poll_battery_device(self, device: indigo.Device) -> None:
+        bridge = self.leap_bridges.get(int(device.pluginProps["bridge"]))
+        if not bridge:
+            self.logger.debug(f"{device.name}: poll_battery_device: bridge not found")
+            return
+
+        try:
+            status = await bridge.get_battery_status(device.pluginProps["device"])
+        except Exception as e:
+            self.logger.debug(f"{device.name}: poll_battery_device: failed to get battery status: {e}")
+            return
+
+        if status is not None:
+            device.updateStateOnServer("battery_status", status)
+            self.logger.debug(f"{device.name}: Battery status set to {status}")
 
     async def lap_pair(self, deviceID: int, address: str) -> None:
         """
@@ -487,6 +527,9 @@ class Plugin(indigo.PluginBase):
                 self.event_loop.create_task(self.bridge_connect(device))
             else:
                 self.logger.warning(f"{device.name}: Not paired, skipping connect")
+        elif device.deviceTypeId == DEV_BATTERY:
+            # battery status has no push subscription; poll it directly, on the periodic schedule from then on
+            self.event_loop.create_task(self.async_start_battery_device(device))
         else:
             self.leap_devices[device.address] = device.id
             self.event_loop.create_task(self.async_start_device(device))
@@ -499,6 +542,16 @@ class Plugin(indigo.PluginBase):
             bridge = self.leap_bridges.pop(device.id, None)
             if bridge:
                 self.event_loop.create_task(bridge.close())
+
+    async def async_start_battery_device(self, device: indigo.Device) -> None:
+        bridge_id = int(device.pluginProps['bridge'])
+
+        # wait for the associated bridge to connect
+        while not self.bridge_connected_events.get(bridge_id, None):
+            await asyncio.sleep(1)
+        await self.bridge_connected_events[bridge_id].wait()
+
+        await self.poll_battery_device(device)
 
     async def async_start_device(self, device: indigo.Device) -> None:
 
@@ -913,12 +966,10 @@ class Plugin(indigo.PluginBase):
             if device['type'] in ['SmartBridge', 'SmartBridge Pro', 'RadioRa3Processor']:
                 self.logger.debug(f"Skipping Bridge device type {device['type']}")
                 continue
-            elif device['type'] in LEAP_DEVICE_TYPES['sensor']:
-                self.logger.debug(f"Skipping Sensor device type {device['type']}")
-                continue
-            elif device['type'] in RA3_OCCUPANCY_SENSOR_DEVICE_TYPES:
-                self.logger.debug(f"Skipping Occupancy Sensor device type {device['type']}")
-                continue
+            elif device['type'] in LEAP_DEVICE_TYPES['sensor'] or device['type'] in RA3_OCCUPANCY_SENSOR_DEVICE_TYPES:
+                # Pico remotes, keypads, and standalone occupancy sensors have no other state to
+                # expose, but they do have a battery to monitor.
+                device_type = DEV_BATTERY
             elif device['type'] in LEAP_DEVICE_TYPES['light']:
                 device_type = DEV_DIMMER
             elif device['type'] in LEAP_DEVICE_TYPES['switch']:
@@ -978,6 +1029,7 @@ class Plugin(indigo.PluginBase):
             DEV_FAN: "Lutron Fans",
             DEV_SHADE: "Lutron Shades",
             DEV_GROUP: "Lutron Occupancy Groups",
+            DEV_BATTERY: "Lutron Battery Devices",
         }
 
         # first, make sure this device doesn't exist.  Unless I screwed up, the addresses should be unique

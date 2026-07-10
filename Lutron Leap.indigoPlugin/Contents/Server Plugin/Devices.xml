@@ -366,4 +366,15 @@
         </States>
         <UiDisplayStateId>status</UiDisplayStateId>
     </Device>
+    <Device id="leapBattery" type="sensor" allowUserCreation="false">
+        <Name>Battery Device</Name>
+        <States>
+            <State id="battery_status" defaultValue="Unknown">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Battery Status</TriggerLabel>
+                <ControlPageLabel>Battery Status</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>battery_status</UiDisplayStateId>
+    </Device>
 </Devices>
