@@ -11,7 +11,7 @@ from datetime import timedelta
 import threading
 import asyncio
 import queue
-from typing import Any, Optional
+from typing import Any, Awaitable, Optional
 
 from pylutron_caseta import _LEAP_DEVICE_TYPES as LEAP_DEVICE_TYPES     # noqa
 from pylutron_caseta import RA3_OCCUPANCY_SENSOR_DEVICE_TYPES, BridgeDisconnectedError, BridgeResponseError
@@ -78,6 +78,7 @@ class Plugin(indigo.PluginBase):
         self.linked_device_list: dict[str, dict[str, str]] = {}
 
         self.bridge_connected_events: dict[int, asyncio.Event] = {}
+        self.bridge_connect_tasks: dict[int, asyncio.Task] = {}
 
         self.keypress_queue: queue.Queue[tuple[str, float]] = queue.Queue()
 
@@ -339,14 +340,14 @@ class Plugin(indigo.PluginBase):
         self.populate_bridge_catalog(bridge_id, bridge_name, bridge, subscribe_buttons=False)
         self.logger.info(f"{bridge_name}: cached devices/buttons/scenes/areas refreshed after reconnect")
 
-    def get_connected_bridge(self, bridge_key, entity_name: str, action_name: str, level: int = logging.WARNING) -> Optional[Smartbridge]:
+    def get_connected_bridge(self, bridge_key: int, entity_name: str, action_name: str, level: int = logging.WARNING) -> Optional[Smartbridge]:
         """Look up a connected Smartbridge, logging a standard message if it's missing or still connecting."""
         bridge = self.leap_bridges.get(bridge_key)
         if not bridge:
             self.logger.log(level, f"{entity_name}: {action_name}: bridge not found")
         return bridge
 
-    async def call_bridge(self, coro, device_name: str, action_name: str,
+    async def call_bridge(self, coro: Awaitable[Any], device_name: str, action_name: str,
                            bridge_level: int = logging.WARNING, other_level: int = logging.ERROR) -> tuple[bool, Any]:
         """Await a Smartbridge command, logging BridgeDisconnectedError/BridgeResponseError
         distinctly from other failures. Returns (True, result) on success, (False, None) on
@@ -361,7 +362,7 @@ class Plugin(indigo.PluginBase):
             self.logger.log(other_level, f"{device_name}: {action_name}: unexpected error: {e}")
         return False, None
 
-    def create_bridge_task(self, coro, device_name: str, action_name: str) -> None:
+    def create_bridge_task(self, coro: Awaitable[Any], device_name: str, action_name: str) -> None:
         """Schedule a fire-and-forget Smartbridge command, logging bridge-specific failures distinctly."""
         self.event_loop.create_task(self.call_bridge(coro, device_name, action_name))
 
@@ -598,7 +599,7 @@ class Plugin(indigo.PluginBase):
             self.leap_bridges[device.id] = None  # create a placeholder for the bridge object, created asynchronously
             self.bridge_connected_events[device.id] = asyncio.Event()  # create an event to wait for the bridge to connect
             if device.pluginProps['paired'] == 'true':
-                self.event_loop.create_task(self.bridge_connect(device))
+                self.bridge_connect_tasks[device.id] = self.event_loop.create_task(self.bridge_connect(device))
             else:
                 self.logger.warning(f"{device.name}: Not paired, skipping connect")
         elif device.deviceTypeId == DEV_BATTERY:
@@ -613,6 +614,9 @@ class Plugin(indigo.PluginBase):
     def deviceStopComm(self, device: indigo.Device) -> None:
         self.logger.threaddebug(f"{device.name}: Stopping Device")
         if device.deviceTypeId == 'leapBridge':
+            task = self.bridge_connect_tasks.pop(device.id, None)
+            if task and not task.done():
+                task.cancel()
             bridge = self.leap_bridges.pop(device.id, None)
             if bridge:
                 self.event_loop.create_task(bridge.close())
