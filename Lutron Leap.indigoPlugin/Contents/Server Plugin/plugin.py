@@ -477,7 +477,9 @@ class Plugin(indigo.PluginBase):
     def deviceStopComm(self, device: indigo.Device) -> None:
         self.logger.threaddebug(f"{device.name}: Stopping Device")
         if device.deviceTypeId == 'leapBridge':
-            del self.leap_bridges[device.id]
+            bridge = self.leap_bridges.pop(device.id, None)
+            if bridge:
+                self.event_loop.create_task(bridge.close())
 
     async def async_start_device(self, device: indigo.Device) -> None:
 
