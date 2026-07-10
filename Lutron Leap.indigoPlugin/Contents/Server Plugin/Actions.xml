@@ -11,6 +11,14 @@
             </Field>
 		</ConfigUI>
 	</Action>
+    <Action id="activate_smart_away" deviceFilter="self.leapBridge">
+		<Name>Activate Smart Away</Name>
+		<CallbackMethod>activate_smart_away_action</CallbackMethod>
+	</Action>
+    <Action id="deactivate_smart_away" deviceFilter="self.leapBridge">
+		<Name>Deactivate Smart Away</Name>
+		<CallbackMethod>deactivate_smart_away_action</CallbackMethod>
+	</Action>
     <Action id="tap_button" deviceFilter="self.leapBridge">
 		<Name>Tap Button</Name>
 		<CallbackMethod>tap_button_action</CallbackMethod>

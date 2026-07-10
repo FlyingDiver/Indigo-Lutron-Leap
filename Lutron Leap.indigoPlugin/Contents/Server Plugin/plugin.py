@@ -254,6 +254,13 @@ class Plugin(indigo.PluginBase):
             self.logger.threaddebug(f"{indigo_bridge_dev.name}: Found Area: {area}")
             self.leap_areas[indigo_bridge_dev.id][area['id']] = area
 
+        bridge.add_smart_away_subscriber(lambda status: self.smart_away_event(indigo_bridge_dev.id, status))
+        try:
+            smart_away_status = await bridge.get_smart_away_status()
+            indigo_bridge_dev.updateStateOnServer('smart_away_status', smart_away_status)
+        except Exception as e:
+            self.logger.debug(f"{indigo_bridge_dev.name}: Smart Away not supported or failed to read status: {e}")
+
         # Devices and Groups will be done when the devices start up.
         self.logger.debug(f"{indigo_bridge_dev.name}: Notifying devices that connection is complete")
         self.bridge_connected_events[indigo_bridge_dev.id].set()
@@ -374,6 +381,18 @@ class Plugin(indigo.PluginBase):
             if trigger.pluginTypeId == "occupancy_event":
                 if trigger.pluginProps['occupancy_group'] == f"{bridge_id}:{data['occupancy_group_id']}" and \
                         trigger.pluginProps['event_type'] == data['status']:
+                    indigo.trigger.execute(trigger)
+
+    def smart_away_event(self, bridge_id: int, status: str) -> None:
+        self.logger.debug(f"smart_away_event: bridge_id = {bridge_id}, status = {status}")
+
+        bridge_dev = indigo.devices[bridge_id]
+        bridge_dev.updateStateOnServer('smart_away_status', status)
+        self.logger.debug(f"{bridge_dev.name}: Smart Away status set to {status}")
+
+        for trigger in indigo.triggers.iter("self"):
+            if trigger.pluginTypeId == "smart_away_event":
+                if int(trigger.pluginProps['bridge']) == bridge_id and trigger.pluginProps['event_type'] == status:
                     indigo.trigger.execute(trigger)
 
     def button_event(self, bridge: int, button_device: str, button_id: str, event_type: str) -> None:
@@ -706,6 +725,24 @@ class Plugin(indigo.PluginBase):
     ########################################
     # Plugin Actions object callbacks (pluginAction is an Indigo plugin action instance)
     ########################################
+
+    def activate_smart_away_action(self, _pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
+
+        bridge = self.leap_bridges.get(bridge_dev.id)
+        if not bridge:
+            self.logger.warning(f"{bridge_dev.name}: activate_smart_away_action: bridge not found")
+            return
+        self.logger.debug(f"{bridge_dev.name}: Activating Smart Away")
+        self.event_loop.create_task(bridge.activate_smart_away())
+
+    def deactivate_smart_away_action(self, _pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
+
+        bridge = self.leap_bridges.get(bridge_dev.id)
+        if not bridge:
+            self.logger.warning(f"{bridge_dev.name}: deactivate_smart_away_action: bridge not found")
+            return
+        self.logger.debug(f"{bridge_dev.name}: Deactivating Smart Away")
+        self.event_loop.create_task(bridge.deactivate_smart_away())
 
     def activate_scene_action(self, pluginAction: indigo.PluginAction, bridge_dev: indigo.Device) -> None:
 

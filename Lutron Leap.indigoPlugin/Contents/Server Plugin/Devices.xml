@@ -47,6 +47,11 @@
                 <TriggerLabel>Device Type</TriggerLabel>
                 <ControlPageLabel>Device Type</ControlPageLabel>
             </State>
+            <State id="smart_away_status" defaultValue="Unknown">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Smart Away Status</TriggerLabel>
+                <ControlPageLabel>Smart Away Status</ControlPageLabel>
+            </State>
         </States>
         <UiDisplayStateId>status</UiDisplayStateId>
     </Device>

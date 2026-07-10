@@ -22,6 +22,23 @@
             </Field>
  		</ConfigUI>
 	</Event>
+    <Event id="smart_away_event">
+        <Name>Smart Away Status Change</Name>
+ 		<ConfigUI>
+            <Field type="menu" id="event_type" defaultValue="Enabled">
+                <Label>Status:</Label>
+                <List>
+                    <Option value="Enabled">Smart Away Enabled</Option>
+                    <Option value="Disabled">Smart Away Disabled</Option>
+                </List>
+            </Field>
+            <Field id="bridge" type="menu">
+                <Label>Bridge/Hub:</Label>
+                <List class="self" method="get_bridge_list" dynamicReload="true"/>
+                 <CallbackMethod>menuChanged</CallbackMethod>
+           </Field>
+ 		</ConfigUI>
+	</Event>
     <Event id="multiButtonPress">
         <Name>(Multi) Button Presses</Name>
  		<ConfigUI>
